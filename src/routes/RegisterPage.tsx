@@ -41,7 +41,7 @@ export default function RegisterPage() {
 
   return (
     <main className="grid min-h-dvh place-items-center px-4">
-      <form onSubmit={onSubmit} className="w-full max-w-sm space-y-4">
+      <form onSubmit={(e) => void onSubmit(e)} className="w-full max-w-sm space-y-4">
         <h1 className="text-center text-3xl font-semibold tracking-tight">Create an account</h1>
 
         <input

@@ -28,6 +28,11 @@ jobs:
 
       - run: npm ci
 
+      # --max-warnings 0, so a warning is a failure. A lint step that tolerates warnings collects
+      # them instead of preventing them.
+      - name: Lint
+        run: npm run lint
+
       - name: Unit tests
         run: npm run test
 
