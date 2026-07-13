@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+# A new push to a PR makes the run in flight irrelevant — cancel it rather than pay for both.
+# Keyed to the ref, so runs on different PRs never cancel each other.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npm run test
+
+      # Also the typecheck: `build` is `tsc -b && vite build`, so a type error fails here. And
+      # building on every PR is worth it on its own — a bundle that does not build is the one
+      # failure the unit tests cannot see, since Vitest compiles each module on demand and never
+      # links the whole graph.
+      - name: Build
+        run: npm run build
+
+      # The e2e suite is deliberately absent. It runs against a real backend rather than a mock —
+      # session bootstrap from the refresh cookie, board claiming, last-write-wins saving are
+      # exactly the things a mock would get wrong — and there is no API to point it at from here.
+      # It needs its own workflow with a live backend; see docs/deployment.md.
