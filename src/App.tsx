@@ -4,6 +4,7 @@ import { SessionExpiredError } from "./api/client";
 import { AuthProvider, RequireAuth } from "./auth/AuthProvider";
 import HomePage from "./routes/HomePage";
 import LoginPage from "./routes/LoginPage";
+import PlayPage from "./routes/PlayPage";
 import RegisterPage from "./routes/RegisterPage";
 
 const queryClient = new QueryClient({
@@ -31,6 +32,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <HomePage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/play/:boardId"
+              element={
+                <RequireAuth>
+                  <PlayPage />
                 </RequireAuth>
               }
             />
