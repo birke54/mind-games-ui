@@ -7,6 +7,8 @@ game that plays on desktop and mobile from one codebase.
   the client, the responsive input model, and the phasing.
 - **[docs/deployment.md](./docs/deployment.md)** — S3 + CloudFront, and the caching rules that break
   deploys if you get them wrong.
+- **[docs/password-reset.md](./docs/password-reset.md)** — design for password reset, not yet built.
+  Spans both repos; the backend cannot currently send email at all, which is most of the work.
 
 ## Running it
 
