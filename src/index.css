@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  /* dvh, not vh: mobile browser chrome makes vh lie, which would push the number pad
+     (phase 2) under the URL bar. */
+  min-height: 100dvh;
+  /* Keep content clear of the iPhone home indicator and notch. */
+  padding-bottom: env(safe-area-inset-bottom);
+  @apply bg-slate-900 text-slate-100 antialiased;
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-slate-100
+           placeholder:text-slate-400 focus:border-sky-500 focus:ring-1 focus:ring-sky-500
+           focus:outline-none;
+  }
+
+  .btn-primary {
+    /* min-h-12 keeps every primary tap target at 48px, above the 44px WCAG 2.5.5 floor.
+       sky-700, not sky-600: white on sky-600 measures 4.02:1, under the 4.5:1 floor for body
+       text (WCAG 1.4.3). sky-700 gives 5.9:1. Hover *darkens* for the same reason — lightening
+       the fill under white text would walk the contrast back down. */
+    @apply min-h-12 rounded-lg bg-sky-700 px-4 font-medium text-white
+           hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
