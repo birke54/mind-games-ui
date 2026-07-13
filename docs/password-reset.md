@@ -79,9 +79,27 @@ panel are worth knowing before you touch it, because both cost time:
   bulk-sender rules make this effectively mandatory.
 
 Note what is deliberately **absent**: there is no mailbox. SES sends *as* an address; the address
-does not have to exist. `no-reply@cortexclash.org` needs nothing behind it.
+does not have to exist. A verified **domain** identity authorises every address at that domain, so
+`noreply@cortexclash.org` is sendable today with nothing behind it.
 
-### 3.2 Why there is no custom MAIL FROM
+### 3.2 The From address
+
+```
+From:     Cortex Clash <noreply@cortexclash.org>
+Reply-To: support@cortexclash.org
+```
+
+`noreply@` needs no mailbox, and **bounces do not need one either**: with no custom MAIL FROM the
+envelope sender is `amazonses.com`, so undeliverable mail bounces back to SES, which is what feeds
+the SNS destination and the account suppression list. Nothing is lost by the address not existing.
+
+Replies are the exception, and they are why `Reply-To` is here. People do reply to password-reset
+mail — "I didn't request this" — and with no forwarding rule the reply bounces, handing a confused
+user a second failure on top of the first. Forward `support@` (Namecheap → Redirect Email) to
+somewhere a human reads. Anti-abuse guidance (M3AAWG) discourages unroutable no-reply addresses
+anyway; a working `Reply-To` is the cheap version of taking that seriously.
+
+### 3.3 Why there is no custom MAIL FROM
 
 SES offers a custom MAIL FROM domain, and we are not using one.
 
@@ -96,10 +114,11 @@ aligns**, and SES's Easy DKIM signs with `d=cortexclash.org`, which is aligned a
 reset mail passes DMARC on DKIM alone. A redundant second alignment path is not worth owning the
 domain's MX records.
 
-### 3.3 Still to do
+### 3.4 Still to do
 
-1. **Forward `dmarc@cortexclash.org`** (Namecheap → Redirect Email), or the aggregate reports the
-   DMARC record asks for will bounce.
+1. **Two Namecheap forwarders** (Domain → Redirect Email): `dmarc@`, or the aggregate reports the
+   DMARC record asks for will bounce; and `support@`, the `Reply-To` above. Both to an address a
+   human reads.
 2. **Configuration set + SNS.** Create a set (`mind-games-transactional`), add an event destination
    for **Bounce** and **Complaint** pointing at an SNS topic, subscribe a real address to it, then
    set it as the identity's **default configuration set** — at the identity, so every message is
