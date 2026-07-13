@@ -1,0 +1,80 @@
+name: Build and deploy to S3/CloudFront
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:         # allow manual runs
+
+env:
+  AWS_REGION: us-west-2
+  # The bucket CloudFront's default behavior serves. Private; reached only via OAC.
+  S3_BUCKET: mind-games-dev-frontend-851725201833-us-west-2-an
+  # The distribution that also fronts /api/* — which is what makes the app same-origin with the API,
+  # and is the only reason the refresh cookie (SameSite=Strict, Path=/api/v1) survives a login.
+  # Set it with:  gh variable set CLOUDFRONT_DISTRIBUTION_ID --body "E..."
+  CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+
+permissions:
+  id-token: write            # required for OIDC federation
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # The unit tests need nothing but Node. The e2e suite needs a live backend, so it is not
+      # run here — see README for how to run it against a local API.
+      - run: npm run test
+      - run: npm run build
+
+      # This role must exist and must trust `repo:birke54/mind-games-ui:*` through GitHub's OIDC
+      # provider — see docs/deployment.md §4. Until it does, this step fails with
+      # "Not authorized to perform sts:AssumeRoleWithWebIdentity", which means no role in the
+      # account will accept this repo's token, not that the workflow is misconfigured.
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::851725201833:role/mind-games-dev-gha-ui
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Two passes, because the caching rules are opposite.
+      #
+      # 1. Hashed assets (/assets/index-D4KZB1aQ.js) are immutable: the name changes whenever the
+      #    content does, so they can be cached forever. Upload these FIRST — if index.html went up
+      #    first, a viewer could fetch it and then 404 on assets that had not landed yet.
+      - name: Upload immutable assets
+        run: |
+          aws s3 sync dist/ "s3://$S3_BUCKET/" \
+            --exclude "index.html" \
+            --exclude "sw.js" \
+            --exclude "manifest.webmanifest" \
+            --cache-control "public,max-age=31536000,immutable" \
+            --delete
+
+      # 2. index.html and the service worker are the entry points and must NEVER be cached, or a
+      #    viewer pins to a stale bundle and never sees the deploy — the classic SPA deploy bug.
+      - name: Upload entry points (no-cache)
+        run: |
+          aws s3 cp dist/index.html "s3://$S3_BUCKET/index.html" \
+            --cache-control "no-cache,no-store,must-revalidate"
+          for f in sw.js manifest.webmanifest; do
+            [ -f "dist/$f" ] && aws s3 cp "dist/$f" "s3://$S3_BUCKET/$f" \
+              --cache-control "no-cache,no-store,must-revalidate"
+          done
+
+      # CloudFront caches at the edge too, so S3 alone is not enough. Only the never-cached files
+      # need invalidating; the hashed ones can't be stale by construction.
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+            --paths "/index.html" "/sw.js" "/manifest.webmanifest"
