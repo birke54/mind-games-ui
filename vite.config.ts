@@ -63,6 +63,17 @@ export default defineConfig({
     },
   },
 
+  // `vite preview` serves the real build, service worker and all — which is what the e2e suite runs
+  // against. It needs the same proxy, for the same same-origin reason as the dev server.
+  preview: {
+    port: 4173,
+    proxy: {
+      "/api": {
+        target: process.env.VITE_API_TARGET ?? "http://localhost:8080",
+        changeOrigin: false,
+      },
+    },
+  },
   test: {
     environment: "jsdom",
     globals: true,
