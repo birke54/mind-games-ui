@@ -1,0 +1,165 @@
+name: End-to-end
+
+# The suite runs against a real backend, on purpose — session bootstrap from the refresh cookie,
+# claiming a board, last-write-wins saving are exactly the things a mock would get wrong. So this
+# workflow stands one up: a throwaway MySQL and the backend's own ECR image, configured the way
+# README.md says to configure it locally.
+#
+# Not on every pull request. It boots a JVM, migrates a schema and generates Sudoku boards before a
+# single test runs, which is minutes of wall clock that PR feedback should not wait on. Nightly, on
+# merge to main, and on demand.
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: "0 7 * * *"        # 07:00 UTC, nightly
+  workflow_dispatch:
+
+# Never two at once: the suite runs with workers:1 against one board pool, and a second run would
+# just starve the first of boards. Queue rather than cancel — a nightly run that gets cancelled by a
+# merge has told us nothing.
+concurrency:
+  group: e2e
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-west-2
+  ECR_REPOSITORY: mind-games-backend
+  MYSQL_DATABASE: mind_games_dev
+  MYSQL_PASSWORD: e2e-throwaway
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # Chromium only. playwright.config.ts already overrides the iPhone descriptor to Chromium
+      # rather than WebKit, so installing WebKit here would download a browser nothing runs.
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::851725201833:role/mind-games-dev-gha-ui
+          aws-region: ${{ env.AWS_REGION }}
+
+      # The role needs ECR read added to it — see docs/deployment.md §4. The images are pulled, not
+      # built: building the backend here would mean checking out a private repo and running Gradle,
+      # and would test a build of the backend that nobody deploys.
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Start MySQL
+        run: |
+          docker network create mindgames
+          docker run -d --name mysql --network mindgames \
+            -e MYSQL_ROOT_PASSWORD="$MYSQL_PASSWORD" \
+            -e MYSQL_DATABASE="$MYSQL_DATABASE" \
+            --health-cmd="mysqladmin ping -h localhost -p$MYSQL_PASSWORD" \
+            --health-interval=5s --health-timeout=5s --health-retries=20 \
+            mysql:8
+
+          echo "Waiting for MySQL to accept connections..."
+          for i in $(seq 1 60); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' mysql)" = "healthy" ] && { echo "MySQL up"; exit 0; }
+            sleep 2
+          done
+          echo "::error::MySQL never became healthy"; docker logs mysql; exit 1
+
+      # Flyway runs at startup against the empty database (spring.flyway.enabled=true,
+      # baseline-on-migrate=false), so there is no schema to load by hand.
+      #
+      # Two settings make the difference between this working and this being unexplainable:
+      #
+      #   COOKIE_SECURE=false     the suite drives http://localhost:4173. With the default `true`
+      #                           the browser silently drops the refresh cookie over plain HTTP, and
+      #                           every test that reloads the page appears to be "randomly" logged
+      #                           out.
+      #   ORIGIN_VERIFY_SECRET    left unset, which disables OriginVerificationFilter. Set, it 403s
+      #                           anything that did not arrive through CloudFront — which is
+      #                           everything, here.
+      #
+      # These are the same two the README tells a human to set to run the suite on their laptop.
+      # The board settings are the deployed ones from the backend's taskdef, except the refill cron:
+      # the default is every 5 minutes, which is longer than the whole run, so the pool would never
+      # top up after the tests drained it.
+      - name: Start the backend
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          docker run -d --name backend --network mindgames -p 8080:8080 \
+            -e DB_URL="jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=utf8" \
+            -e DB_USERNAME=root \
+            -e DB_PASSWORD="$MYSQL_PASSWORD" \
+            -e JWT_SECRET="$(openssl rand -base64 48)" \
+            -e JWT_EXPIRATION_MINUTES=15 \
+            -e JWT_REFRESH_EXPIRATION_DAYS=30 \
+            -e COOKIE_SECURE=false \
+            -e SECURITY_LOCKOUT_THRESHOLD=5 \
+            -e BOARD_GRADING_MIN_THRESHOLD=43 \
+            -e BOARD_GRADING_EASY_MAX_THRESHOLD=52 \
+            -e BOARD_GRADING_MODERATE_MAX_THRESHOLD=72 \
+            -e BOARD_GRADING_HARD_MAX_THRESHOLD=92 \
+            -e BOARD_GENERATION_PREGENERATION_BOARD_COUNT=8 \
+            -e BOARD_GENERATION_LOW_WATERMARK=4 \
+            -e BOARD_GENERATION_MAX_ATTEMPTS_PER_BOARD=3 \
+            -e BOARD_GENERATION_REFILL_CRON="0/20 * * * * *" \
+            "$REGISTRY/$ECR_REPOSITORY:latest"
+
+          echo "Waiting for the API to answer..."
+          for i in $(seq 1 90); do
+            if curl -fsS http://localhost:8080/api/ping >/dev/null 2>&1; then
+              echo "Backend up"; exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' backend)" != "true" ]; then
+              echo "::error::Backend container exited before serving"; docker logs backend; exit 1
+            fi
+            sleep 2
+          done
+          echo "::error::Backend never answered /api/ping"; docker logs backend; exit 1
+
+      # Give the pool-monitor a moment to generate the first boards. A 503 from GET /board means the
+      # pool for that difficulty is empty — documented behaviour the specs tolerate, but starting
+      # from a cold empty pool makes them all sit through a refill cycle for no reason.
+      - name: Wait for the board pool to fill
+        run: sleep 45
+
+      # VITE_API_TARGET points the preview server's /api proxy at the container. Same-origin from
+      # the browser's point of view, which is the only way the SameSite=Strict refresh cookie
+      # survives — the same reason the dev server proxies instead of calling the API directly.
+      - name: Run the end-to-end suite
+        env:
+          VITE_API_TARGET: http://localhost:8080
+        run: npm run test:e2e
+
+      - name: Backend logs
+        if: failure()
+        run: docker logs backend
+
+      # Traces are retain-on-failure, so this is empty on a green run and is the first thing worth
+      # opening on a red one.
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+          if-no-files-found: ignore

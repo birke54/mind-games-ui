@@ -86,8 +86,60 @@ jobs:
 
       # CloudFront caches at the edge too, so S3 alone is not enough. Only the never-cached files
       # need invalidating; the hashed ones can't be stale by construction.
+      #
+      # The invalidation is asynchronous, so we keep its id and wait for it below — verifying before
+      # it completes would just read the old edge copy and fail for the wrong reason.
       - name: Invalidate CloudFront
+        id: invalidate
         run: |
-          aws cloudfront create-invalidation \
+          id=$(aws cloudfront create-invalidation \
             --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
-            --paths "/index.html" "/sw.js" "/registerSW.js" "/manifest.webmanifest"
+            --paths "/index.html" "/sw.js" "/registerSW.js" "/manifest.webmanifest" \
+            --query 'Invalidation.Id' --output text)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --id "$id"
+
+      # Prove the deploy actually landed.
+      #
+      # This exists because the failure it catches is silent. A deploy pointed at a bucket
+      # CloudFront is not serving does not fail: the sync uploads happily, every step goes green,
+      # and the site never changes. That bucket name was wrong once already. Nothing in the steps
+      # above can tell the difference — only asking CloudFront what it is actually serving can.
+      #
+      # The build's entry bundle is content-hashed, so its filename is a fingerprint of this exact
+      # commit's output. If the HTML the edge serves names that file, the bytes we just uploaded are
+      # the bytes the world is getting.
+      - name: Verify the deploy is live
+        run: |
+          set -euo pipefail
+
+          expected=$(grep -o 'assets/index-[A-Za-z0-9_-]*\.js' dist/index.html | head -1)
+          [ -n "$expected" ] || { echo "::error::No hashed entry bundle in dist/index.html — the build is not what this step assumes."; exit 1; }
+
+          site="${SITE_URL:-https://$(aws cloudfront get-distribution \
+            --id "$CLOUDFRONT_DISTRIBUTION_ID" \
+            --query 'Distribution.DomainName' --output text)}"
+          echo "Verifying $site"
+
+          served=$(curl -fsS --retry 5 --retry-delay 5 --retry-all-errors \
+            -H 'Cache-Control: no-cache' "$site/index.html?cachebust=$GITHUB_SHA")
+
+          if ! grep -qF "$expected" <<<"$served"; then
+            echo "::error::CloudFront is not serving this build. Expected index.html to reference $expected."
+            echo "The deploy reported success, so the upload worked — it went somewhere CloudFront is not reading."
+            echo "Check that S3_BUCKET ($S3_BUCKET) is the origin behind the default behavior of distribution $CLOUDFRONT_DISTRIBUTION_ID."
+            echo "--- what the edge actually served ---"
+            grep -o 'assets/index-[A-Za-z0-9_-]*\.js' <<<"$served" || echo "(no hashed bundle referenced at all)"
+            exit 1
+          fi
+
+          # The HTML naming the bundle is not the same as the bundle being fetchable — a partial
+          # sync would still fail here.
+          curl -fsS --retry 5 --retry-delay 5 --retry-all-errors -o /dev/null "$site/$expected"
+
+          echo "Live: $site is serving $expected"
+        env:
+          # Optional: set a custom domain with `gh variable set SITE_URL --body "https://..."`.
+          # Falls back to the distribution's own cloudfront.net domain.
+          SITE_URL: ${{ vars.SITE_URL }}
