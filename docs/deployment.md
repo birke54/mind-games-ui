@@ -123,10 +123,35 @@ Attach this permissions policy:
       "Resource": "arn:aws:s3:::mind-games-dev-frontend-851725201833-us-west-2-an" },
     { "Effect": "Allow", "Action": ["s3:PutObject", "s3:DeleteObject"],
       "Resource": "arn:aws:s3:::mind-games-dev-frontend-851725201833-us-west-2-an/*" },
-    { "Effect": "Allow", "Action": "cloudfront:CreateInvalidation", "Resource": "*" }
+    { "Effect": "Allow",
+      "Action": [
+        "cloudfront:CreateInvalidation",
+        "cloudfront:GetInvalidation",
+        "cloudfront:GetDistribution"
+      ],
+      "Resource": "*" },
+    { "Effect": "Allow", "Action": "ecr:GetAuthorizationToken", "Resource": "*" },
+    { "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer"
+      ],
+      "Resource": "arn:aws:ecr:us-west-2:851725201833:repository/mind-games-backend" }
   ]
 }
 ```
+
+Three of those are newer than the original deploy and easy to miss:
+
+- **`GetInvalidation`** — the deploy waits for its own invalidation to complete before verifying the
+  site. Without it, `aws cloudfront wait` fails and the deploy goes red *after* successfully
+  deploying.
+- **`GetDistribution`** — the verify step resolves the distribution's domain name to know what URL to
+  check. Skip it by setting a `SITE_URL` variable instead
+  (`gh variable set SITE_URL --body "https://cortexclash.org"`), which the step prefers when present.
+- **`ecr:*`** — `e2e.yml` pulls the backend image to run the end-to-end suite against a real API. Only
+  needed if you run that workflow; the read-only actions are scoped to the one repository.
 
 Then put the role's ARN into `deploy.yml` as `role-to-assume`, and set the distribution id as a
 repository variable (**Settings → Secrets and variables → Actions → Variables**), since the workflow
