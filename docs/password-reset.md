@@ -55,9 +55,78 @@ go in Secrets Manager. The taskdef already pulls `JWT_SECRET`, `DB_USERNAME`, `D
 `ORIGIN_VERIFY_SECRET` from Secrets Manager, so this adds a fifth entry to an established pattern
 rather than a new mechanism.
 
-## 3. Backend
+## 3. AWS and DNS
 
-### 3.1 Schema — `V3__password_reset.sql`
+SES lives in **us-west-2**, like everything else. It is regional, and an identity verified in the
+wrong region is invisible to a backend sending through `email-smtp.us-west-2.amazonaws.com`.
+
+DNS for `cortexclash.org` is at **Namecheap** (`dns1/dns2.registrar-servers.com`), *not* Route 53, so
+every record below is added by hand in Namecheap's **Advanced DNS** panel. Two things about that
+panel are worth knowing before you touch it, because both cost time:
+
+- **The Host field is relative.** Namecheap appends the domain for you. Paste the fully-qualified
+  name SES shows you (`abc._domainkey.cortexclash.org`) and you will create
+  `abc._domainkey.cortexclash.org.cortexclash.org`, which verifies nothing. Enter `abc._domainkey`.
+- **A new row is not saved until you commit it** — the green checkmark on the row, then *Save All
+  Changes*. A half-added row looks completely normal and vanishes when you navigate away.
+
+### 3.1 Done
+
+- **Domain identity** `cortexclash.org`, verified, with Easy DKIM (RSA 2048). Three CNAMEs at
+  Namecheap.
+- **DMARC**: TXT on `_dmarc` → `v=DMARC1; p=none; rua=mailto:dmarc@cortexclash.org`. Starts at
+  `p=none` (monitor, don't reject); tighten once the reports look clean. Gmail's and Yahoo's
+  bulk-sender rules make this effectively mandatory.
+
+Note what is deliberately **absent**: there is no mailbox. SES sends *as* an address; the address
+does not have to exist. `no-reply@cortexclash.org` needs nothing behind it.
+
+### 3.2 Why there is no custom MAIL FROM
+
+SES offers a custom MAIL FROM domain, and we are not using one.
+
+It needs an MX record, and Namecheap only exposes the MX record type when **Mail Settings** is set to
+`Custom MX` — which is a domain-wide switch that stops Namecheap managing the MX records the domain's
+existing **email forwarding** depends on. Turning it on means hand-maintaining the five
+`eforward*.registrar-servers.com` records, and a mistake there takes down inbound mail for the whole
+domain, including the `dmarc@` address the DMARC reports are sent to.
+
+The payoff would have been SPF alignment. We do not need it: **DMARC passes if *either* SPF or DKIM
+aligns**, and SES's Easy DKIM signs with `d=cortexclash.org`, which is aligned and verified. The
+reset mail passes DMARC on DKIM alone. A redundant second alignment path is not worth owning the
+domain's MX records.
+
+### 3.3 Still to do
+
+1. **Forward `dmarc@cortexclash.org`** (Namecheap → Redirect Email), or the aggregate reports the
+   DMARC record asks for will bounce.
+2. **Configuration set + SNS.** Create a set (`mind-games-transactional`), add an event destination
+   for **Bounce** and **Complaint** pointing at an SNS topic, subscribe a real address to it, then
+   set it as the identity's **default configuration set** — at the identity, so every message is
+   covered whether or not the application remembers to name it. This is what the production-access
+   review actually scrutinises; do it before applying.
+3. **SMTP credentials.** SES → SMTP settings → Create SMTP credentials. It creates an IAM user and
+   shows the password **once**. Store it beside the other secrets:
+
+   ```bash
+   aws secretsmanager create-secret --name mind-games/dev/ses-smtp --region us-west-2 \
+     --secret-string '{"username":"AKIA...","password":"..."}'
+   ```
+
+   Then add two `secrets` entries to the ECS taskdef beside `JWT_SECRET`. Endpoint:
+   `email-smtp.us-west-2.amazonaws.com:587`, STARTTLS.
+4. **Request production access** (Account dashboard). Mail type *transactional*, site
+   `https://cortexclash.org`, and say plainly: password-reset mail to registered users only, bounces
+   and complaints to an SNS topic, SES account-level suppression list relied on. Vague answers get
+   the request returned with questions.
+
+**None of this blocks development.** Verify your own address as a second identity (Create identity →
+*Email address*) and the sandbox will deliver real reset emails to you. Production access only
+decides whether the feature can reach anyone *else*.
+
+## 4. Backend
+
+### 4.1 Schema — `V3__password_reset.sql`
 
 A new table, modelled on `refresh_tokens` because it is the same kind of object:
 
@@ -80,7 +149,7 @@ CREATE TABLE `password_reset_tokens` (
 and a `MODIFY COLUMN` on `user_audit.action` to add `password_reset_requested` and
 `password_reset_completed`. V2 already extended that ENUM once, so there is precedent for how.
 
-### 3.2 `PasswordResetService`
+### 4.2 `PasswordResetService`
 
 Mirror `RefreshTokenService` closely enough that a reader of one can read the other: 32 bytes of
 `SecureRandom`, URL-safe Base64 without padding, store `sha256(raw)`.
@@ -93,7 +162,7 @@ It differs in three ways, all deliberate:
 | Reuse | Rotated; reuse revokes the family | **Single use** (`used_at`) |
 | On issue | Extends a family | **Invalidates any outstanding token for that user** |
 
-### 3.3 Endpoints
+### 4.3 Endpoints
 
 Two, both added to the `permitAll()` list in `SecurityConfig` — a user who needs these cannot
 authenticate by definition. Naming follows the existing `/api/v1/authenticate_user`:
@@ -104,7 +173,7 @@ POST /api/v1/reset_password           { "token": "...", "password": "..." }
                                                                       -> 204 | 400
 ```
 
-### 3.4 The four properties that matter
+### 4.4 The four properties that matter
 
 **Return 202 unconditionally.** The request endpoint must answer identically whether or not the
 address has an account. Anything else — a different status, a different body, a materially different
@@ -125,7 +194,7 @@ symptom ("my new password doesn't work") points at exactly the wrong place.
 routes at 5 rps; extend that throttle to these two. Add a per-user cap as well (3 requests/hour).
 Without one, the endpoint is an anonymous email cannon aimed at any address someone cares to type.
 
-### 3.5 A gap to fix while you are here: there is no password policy
+### 4.5 A gap to fix while you are here: there is no password policy
 
 `RegisterUserRequest` declares `@NotBlank String password` and nothing more. No minimum length, no
 complexity rule. Today `a` is a valid password.
@@ -136,7 +205,7 @@ shared validator, apply it to both paths, and export the minimum length from `sr
 beside `USERNAME_MAX_LENGTH` so the client enforces the same rule it will be judged by. This is much
 cheaper now than once there are users whose existing passwords fail the new policy.
 
-## 4. Front-end
+## 5. Front-end
 
 Two public routes in `App.tsx`, beside `/login` and `/register`:
 
@@ -171,7 +240,7 @@ intent to start a session, and the user has just been logged out of every device
 Both screens are picked up automatically by the axe WCAG 2.1 AA audit in `e2e/a11y.spec.ts`, which
 walks every route.
 
-## 5. Testing
+## 6. Testing
 
 | Layer | Covers |
 |---|---|
@@ -184,7 +253,7 @@ walks every route.
 
 The Mailpit row is the one that only exists if §2 goes the SMTP way. It is the reason to.
 
-## 6. Order of work
+## 7. Order of work
 
 1. **AWS, immediately** — SES identity, DKIM, and the production-access request. Gates release, not
    development.
@@ -196,7 +265,7 @@ The Mailpit row is the one that only exists if §2 goes the SMTP way. It is the 
 Two to three days of work, most of it in the backend, plus however long AWS takes to let you send
 mail to strangers.
 
-## 7. Open questions
+## 8. Open questions
 
 - **Should a reset email be sent to an address that has no account?** No — but consider whether the
   *absence* of an email is itself a signal to someone who typed a stranger's address. It is; there is
