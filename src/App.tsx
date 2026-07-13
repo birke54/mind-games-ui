@@ -6,6 +6,7 @@ import HomePage from "./routes/HomePage";
 import LoginPage from "./routes/LoginPage";
 import PlayPage from "./routes/PlayPage";
 import RegisterPage from "./routes/RegisterPage";
+import StatsPage from "./routes/StatsPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,6 +41,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <PlayPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/stats"
+              element={
+                <RequireAuth>
+                  <StatsPage />
                 </RequireAuth>
               }
             />
