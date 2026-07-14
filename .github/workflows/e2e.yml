@@ -81,6 +81,27 @@ jobs:
           done
           echo "::error::MySQL never became healthy"; docker logs mysql; exit 1
 
+      # The mailbox the reset links land in, and the reason the backend speaks SMTP rather than
+      # using the SES SDK. The reset token is persisted only as sha256(raw) — the raw value exists
+      # in exactly one place, the email. Without something to read that email, the happy path is
+      # untestable and only the failure cases would have coverage, on the most security-sensitive
+      # flow in the app.
+      #
+      # 1025 is SMTP (the backend sends here); 8025 is the HTTP API (Playwright reads here).
+      - name: Start Mailpit
+        run: |
+          docker run -d --name mailpit --network mindgames -p 8025:8025 \
+            axllent/mailpit:latest
+
+          echo "Waiting for Mailpit..."
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8025/api/v1/info >/dev/null 2>&1; then
+              echo "Mailpit up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Mailpit never came up"; docker logs mailpit; exit 1
+
       # Flyway runs at startup against the empty database (spring.flyway.enabled=true,
       # baseline-on-migrate=false), so there is no schema to load by hand.
       #
@@ -95,6 +116,23 @@ jobs:
       #                           everything, here.
       #
       # These are the same two the README tells a human to set to run the suite on their laptop.
+      #
+      # The five PASSWORD_RESET_/MAIL_ settings point the reset flow at Mailpit:
+      #
+      #   PASSWORD_RESET_MAILER=smtp  the default is `log`, which writes the link to the backend's
+      #                               log instead of sending it. Left alone, no mail is ever sent
+      #                               and every mail spec times out waiting for a message.
+      #   MAIL_SMTP_AUTH=false        Mailpit takes unauthenticated plaintext SMTP. The defaults
+      #   MAIL_SMTP_STARTTLS=false    (both `true`) are for SES and fail against it.
+      #   PASSWORD_RESET_URL          must be the address Playwright is actually browsing, not the
+      #                               production default (https://cortexclash.org/reset-password),
+      #                               or the link in the email points off-box and the test follows
+      #                               it there.
+      #
+      # PASSWORD_RESET_MAX_REQUESTS_PER_HOUR is deliberately NOT overridden: every spec registers a
+      # fresh user and asks for one link, so the real per-user cap of 3/hour is never in the way,
+      # and the tests run against the limit that production runs against.
+      #
       # The board settings are the deployed ones from the backend's taskdef, except the refill cron:
       # the default is every 5 minutes, which is longer than the whole run, so the pool would never
       # top up after the tests drained it.
@@ -119,6 +157,12 @@ jobs:
             -e BOARD_GENERATION_LOW_WATERMARK=4 \
             -e BOARD_GENERATION_MAX_ATTEMPTS_PER_BOARD=3 \
             -e BOARD_GENERATION_REFILL_CRON="0/20 * * * * *" \
+            -e PASSWORD_RESET_MAILER=smtp \
+            -e MAIL_HOST=mailpit \
+            -e MAIL_PORT=1025 \
+            -e MAIL_SMTP_AUTH=false \
+            -e MAIL_SMTP_STARTTLS=false \
+            -e PASSWORD_RESET_URL="http://localhost:4173/reset-password" \
             "$REGISTRY/$ECR_REPOSITORY:latest"
 
           echo "Waiting for the API to answer..."

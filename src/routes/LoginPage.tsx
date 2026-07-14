@@ -6,7 +6,9 @@ import { ApiError } from "../api/client";
 export default function LoginPage() {
   const { status, login } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation() as { state?: { from?: string } };
+  // `notice` is set by ResetPasswordPage, which sends the user here rather than signing them in.
+  const location = useLocation() as { state?: { from?: string; notice?: string } };
+  const notice = location.state?.notice;
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -48,6 +50,12 @@ export default function LoginPage() {
       <form onSubmit={(e) => void onSubmit(e)} className="w-full max-w-sm space-y-4">
         <h1 className="text-center text-3xl font-semibold tracking-tight">Cortex Clash</h1>
 
+        {notice && (
+          <p role="status" className="text-sm text-emerald-400">
+            {notice}
+          </p>
+        )}
+
         <input
           className="field"
           value={username}
@@ -76,6 +84,12 @@ export default function LoginPage() {
         <button type="submit" disabled={busy} className="btn-primary w-full">
           {busy ? "Signing in…" : "Sign in"}
         </button>
+
+        <p className="text-center text-sm text-slate-400">
+          <Link to="/forgot-password" className="text-sky-400 underline">
+            Forgot password?
+          </Link>
+        </p>
 
         <p className="text-center text-sm text-slate-400">
           No account?{" "}

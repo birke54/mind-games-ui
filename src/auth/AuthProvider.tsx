@@ -25,6 +25,7 @@ interface AuthContextValue {
   offline: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  clearSession: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -122,9 +123,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus("anonymous");
   }, []);
 
+  /**
+   * Forget the session locally, without asking the server to end it — because the server has
+   * already ended it.
+   *
+   * This exists for password reset. A successful reset revokes every refresh-token family the user
+   * has (the whole point: if the reset is happening because the account was compromised, leaving
+   * the attacker signed in defeats the exercise) — and "every" includes this browser's. So the
+   * access token in memory is already dead, and so is the refresh cookie, whatever the client
+   * still believes.
+   *
+   * Without this, a user who resets while still signed in here is left looking authenticated to a
+   * server that disagrees: /login would bounce them straight back to a home screen whose every API
+   * call is about to fail. There is nothing to ask the server for — just catch up with it.
+   */
+  const clearSession = useCallback(() => {
+    api.setAccessToken(null);
+    rememberSession(false);
+    setUsername(null);
+    setStatus("anonymous");
+  }, []);
+
   const value = useMemo(
-    () => ({ status, username, offline: status === "offline", login, logout }),
-    [status, username, login, logout],
+    () => ({ status, username, offline: status === "offline", login, logout, clearSession }),
+    [status, username, login, logout, clearSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
