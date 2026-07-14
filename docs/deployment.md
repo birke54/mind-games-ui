@@ -73,15 +73,26 @@ S3 answers 403 and the viewer gets an error page instead of the app. Add **custo
 Both must return **200**, not the original status — a 403 body with a 403 status still fails, and the
 router never boots. This does not affect `/api/*`, which is matched by its own behavior first.
 
+Since the password-reset feature this rule has teeth it did not have before. `/play/42` is only ever
+reached by navigating inside an already-loaded app, so a missing error response degrades gracefully:
+it breaks reloads and shared links, not the product. But the reset email sends people to
+`https://cortexclash.org/reset-password?token=…` — a cold first load, straight at a path that is not
+an object in the bucket, by someone who is locked out of their account and has no in-app route to
+where they are going. Get this wrong and the reset flow is *entirely* broken while everything a
+logged-in user does still works, which is the kind of failure nobody notices for a week.
+
 ## 3. Caching — the two rules that matter
 
 Set on upload by the workflow, and they are opposites:
 
 - **Hashed assets** (`/assets/index-D4KZB1aQ.js`) → `public,max-age=31536000,immutable`. The filename
   changes whenever the content does, so they can be cached forever.
-- **`index.html`, `sw.js`, `manifest.webmanifest`** → `no-cache,no-store,must-revalidate`. These are
-  the entry points, and their names never change. Cache `index.html` and a viewer pins to a stale
-  bundle and never sees the deploy again — the classic SPA deploy bug.
+- **`index.html`, `sw.js`, `registerSW.js`, `manifest.webmanifest`** → `no-cache,no-store,must-revalidate`.
+  These are the entry points, and their names never change. Cache `index.html` and a viewer pins to a
+  stale bundle and never sees the deploy again — the classic SPA deploy bug. `registerSW.js` is the
+  one that is easy to miss: `vite-plugin-pwa` emits it unhashed and `index.html` loads it, and it is
+  what installs the service worker at all — cached immutably, a change to how the app registers its
+  SW would never reach anyone who had already visited.
 
 Assets are uploaded **before** `index.html`, so a viewer can never fetch a new `index.html` that
 references assets which have not landed yet.
@@ -169,13 +180,24 @@ gh variable set CLOUDFRONT_DISTRIBUTION_ID --body "E1234567890ABC"
 ## 5. Verify
 
 ```bash
-curl -sI https://cortexclash.org/            | grep -i cache-control   # no-cache
-curl -sI https://cortexclash.org/assets/….js | grep -i cache-control   # immutable
-curl -s  https://cortexclash.org/api/ping                              # {"status":"ok"} — same origin
+curl -sI https://cortexclash.org/                | grep -i cache-control   # no-cache
+curl -sI https://cortexclash.org/registerSW.js   | grep -i cache-control   # no-cache
+curl -sI https://cortexclash.org/assets/….js     | grep -i cache-control   # immutable
+curl -s  https://cortexclash.org/api/ping                                  # {"status":"ok"} — same origin
+curl -so /dev/null -w '%{http_code}\n' https://cortexclash.org/reset-password   # 200, not 403
 ```
 
-The third is the important one. If `/api/ping` does not answer from the *same hostname* the app is
+The `/api/ping` one is the important one. If it does not answer from the *same hostname* the app is
 served from, login cannot work, and no amount of front-end debugging will fix it.
+
+The last one is the custom error responses from §2, checked directly: a bare `/reset-password` is not
+an object in the bucket, so **200** means CloudFront rewrote S3's 403 into `index.html` and every
+link the reset emails send will boot the app. **403** means they will not.
+
+The deploy workflow already proves the *bundle* is live — its verify step reads `index.html` back
+from the edge and checks that it names the content-hashed entry bundle this build just produced, so a
+sync that lands in a bucket CloudFront is not serving goes red instead of silently green. What is
+left for a human is the topology above, which only changes when someone changes the distribution.
 
 Then load the app, sign in, and reload the page. If you stay signed in, the refresh cookie made the
 round trip — which is the real end-to-end proof that the topology is right.
