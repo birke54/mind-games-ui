@@ -79,3 +79,40 @@ export async function waitForServiceWorker(page: Page): Promise<void> {
 /** Row-major indices of the cells the player has to fill. */
 export const emptyCells = (board: Board): number[] =>
   [...board.puzzle].flatMap((c, i) => (c === "0" ? [i] : []));
+
+/** The cells that share a row, a column or a box with `index` — the ones it can conflict with. */
+function peersOf(index: number): number[] {
+  const row = Math.floor(index / 9);
+  const col = index % 9;
+  const boxTop = Math.floor(row / 3) * 3;
+  const boxLeft = Math.floor(col / 3) * 3;
+
+  const peers = new Set<number>();
+  for (let i = 0; i < 9; i++) {
+    peers.add(row * 9 + i); // the row
+    peers.add(i * 9 + col); // the column
+    peers.add((boxTop + Math.floor(i / 3)) * 9 + boxLeft + (i % 3)); // the box
+  }
+  peers.delete(index);
+  return [...peers];
+}
+
+/**
+ * An empty cell, and a digit already present among its peers — so writing that digit there is
+ * guaranteed to raise a conflict.
+ *
+ * The distinction this exists to respect: **a wrong digit is not necessarily a conflicting one.**
+ * `conflicts()` is rule validation — "a cell can be conflict-free and still wrong"
+ * (src/game/sudoku.ts). Picking a digit merely *different from the solution* therefore raises a
+ * conflict only when the deal happens to cooperate, which makes the test pass or fail on the luck
+ * of which board came out of the pool.
+ */
+export function conflictingMove(board: Board): { index: number; digit: string } {
+  for (const index of emptyCells(board)) {
+    for (const peer of peersOf(index)) {
+      const digit = board.puzzle[peer];
+      if (digit !== "0") return { index, digit };
+    }
+  }
+  throw new Error("no empty cell on this board has a given peer to conflict with");
+}
