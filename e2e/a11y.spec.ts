@@ -22,6 +22,45 @@ test.describe("accessibility", () => {
     expect(violations).toEqual([]);
   });
 
+  test("the forgot-password screen", async ({ page }) => {
+    await page.goto("/forgot-password");
+    await expect(page.getByRole("button", { name: "Send reset link" })).toBeVisible();
+
+    const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+    expect(violations).toEqual([]);
+  });
+
+  test("the neutral confirmation", async ({ page }) => {
+    // The confirmation replaces the form, so it is a screen of its own and axe never sees it
+    // unless we submit. It is also the screen a user is most likely to be reading with a
+    // screen reader, having just been told nothing specific happened.
+    await page.goto("/forgot-password");
+    await page.getByPlaceholder("Email").fill("someone@example.com");
+    await page.getByRole("button", { name: "Send reset link" }).click();
+    await expect(page.getByText(/if that address has an account/i)).toBeVisible();
+
+    const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+    expect(violations).toEqual([]);
+  });
+
+  test("the reset-password screen", async ({ page }) => {
+    // A syntactically fine token that matches nothing. The form renders the same either way; it
+    // only learns the token is dead on submit, which is what we want here — the form itself.
+    await page.goto("/reset-password?token=not-a-real-token");
+    await expect(page.getByRole("button", { name: "Set new password" })).toBeVisible();
+
+    const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+    expect(violations).toEqual([]);
+  });
+
+  test("the dead-link screen", async ({ page }) => {
+    await page.goto("/reset-password");
+    await expect(page.getByRole("link", { name: "Request a new link" })).toBeVisible();
+
+    const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+    expect(violations).toEqual([]);
+  });
+
   test("the home screen", async ({ page }) => {
     await signUp(page);
 

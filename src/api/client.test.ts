@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  ApiError,
   NetworkError,
   SessionExpiredError,
+  getAccessToken,
   listBoards,
   refreshAccessToken,
+  requestPasswordReset,
+  resetPassword,
   setAccessToken,
   setSessionExpiredHandler,
 } from "./client";
@@ -145,5 +149,78 @@ describe("public endpoints", () => {
     );
 
     expect(fetchMock.mock.calls.filter(isRefresh)).toHaveLength(0);
+  });
+});
+
+describe("password reset", () => {
+  /** A body-less response. Calling .json() on one really does reject — there is nothing to parse. */
+  const empty = (status: number) =>
+    ({
+      ok: status >= 200 && status < 300,
+      status,
+      statusText: String(status),
+      json: async () => {
+        throw new SyntaxError("Unexpected end of JSON input");
+      },
+    }) as unknown as Response;
+
+  it("resolves when a reset request is accepted, though 202 carries no body", async () => {
+    // The endpoint answers `accepted().build()` — a 202 with nothing in it. Parsing that as JSON
+    // would throw, and the caller would see a SyntaxError instead of the success it was given.
+    fetchMock.mockResolvedValueOnce(empty(202));
+
+    await expect(requestPasswordReset("someone@example.com")).resolves.toBeUndefined();
+  });
+
+  it("resolves the same way for an address with no account", async () => {
+    // The server cannot tell us, and must not: 202 is the answer either way. This test exists to
+    // pin that the client has no branch which could reintroduce the enumeration oracle.
+    fetchMock.mockResolvedValueOnce(empty(202));
+
+    await expect(requestPasswordReset("nobody@example.com")).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/request_password_reset",
+      expect.objectContaining({ body: JSON.stringify({ email: "nobody@example.com" }) }),
+    );
+  });
+
+  it("sends no bearer token and never refreshes, even when rejected", async () => {
+    // A user resetting a password cannot authenticate by definition. A 4xx here means "bad link",
+    // not "session expired" — routing it into the refresh path would burn the refresh cookie and
+    // sign out a user who never had a session.
+    const onExpired = vi.fn();
+    setSessionExpiredHandler(onExpired);
+    setAccessToken("some-stale-token");
+
+    fetchMock.mockResolvedValueOnce(reply(403, { error: "nope" }));
+
+    await expect(resetPassword("bad-token", "a-good-password")).rejects.toBeInstanceOf(ApiError);
+
+    expect(fetchMock.mock.calls.filter(isRefresh)).toHaveLength(0);
+    expect(onExpired).not.toHaveBeenCalled();
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
+  });
+
+  it("resolves on 204 without signing the user in", async () => {
+    // No token comes back and none is set: a reset proves control of an inbox, not intent to start
+    // a session — and the user has just been signed out of every device on purpose.
+    setAccessToken(null);
+    fetchMock.mockResolvedValueOnce(empty(204));
+
+    await expect(resetPassword("raw-token", "a-good-password")).resolves.toBeUndefined();
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it("surfaces the server's message when the token or password is rejected", async () => {
+    // The backend distinguishes a dead link from a weak password, because the user does something
+    // different about each. That message is the one worth showing.
+    fetchMock.mockResolvedValueOnce(
+      reply(400, { error: "This password reset link is invalid or has expired." }),
+    );
+
+    await expect(resetPassword("used-token", "a-good-password")).rejects.toThrow(
+      "This password reset link is invalid or has expired.",
+    );
   });
 });

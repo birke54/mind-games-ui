@@ -2,7 +2,13 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import * as api from "../api/client";
 import { ApiError } from "../api/client";
-import { EMAIL_MAX_LENGTH, USERNAME_MAX_LENGTH } from "../api/types";
+import {
+  EMAIL_MAX_LENGTH,
+  PASSWORD_MAX_LENGTH_BYTES,
+  PASSWORD_MIN_LENGTH,
+  USERNAME_MAX_LENGTH,
+  passwordByteLength,
+} from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
 
 export default function RegisterPage() {
@@ -17,8 +23,21 @@ export default function RegisterPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    setBusy(true);
     setError(null);
+
+    // The same policy the reset form enforces, because it is the same policy the backend enforces
+    // on both (`PasswordPolicy`). A rule applied to only one path produces the absurdity of a
+    // password you may register with but may not reset to.
+    if (password.length < PASSWORD_MIN_LENGTH) {
+      setError(`Password must be at least ${PASSWORD_MIN_LENGTH} characters.`);
+      return;
+    }
+    if (passwordByteLength(password) > PASSWORD_MAX_LENGTH_BYTES) {
+      setError(`Password must be at most ${PASSWORD_MAX_LENGTH_BYTES} bytes.`);
+      return;
+    }
+
+    setBusy(true);
     try {
       await api.register({ username, email, password });
       // Register does not mint tokens, so sign in with the credentials we already have.
@@ -70,8 +89,13 @@ export default function RegisterPage() {
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Password"
           autoComplete="new-password"
+          minLength={PASSWORD_MIN_LENGTH}
           required
         />
+
+        <p className="text-sm text-slate-400">
+          At least {PASSWORD_MIN_LENGTH} characters.
+        </p>
 
         {error && (
           <p role="alert" className="text-sm text-rose-400">

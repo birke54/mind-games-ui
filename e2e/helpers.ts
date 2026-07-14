@@ -79,3 +79,74 @@ export async function waitForServiceWorker(page: Page): Promise<void> {
 /** Row-major indices of the cells the player has to fill. */
 export const emptyCells = (board: Board): number[] =>
   [...board.puzzle].flatMap((c, i) => (c === "0" ? [i] : []));
+
+/* ------------------------------------------------------------------ mail */
+
+/**
+ * Mailpit, the SMTP sink the backend sends through in CI.
+ *
+ * This is the whole reason the backend speaks SMTP rather than using the SES SDK. The reset token
+ * is stored as `sha256(raw)` and the raw value is *never persisted* — so it exists in exactly one
+ * place in the universe, the email. Without a mailbox to read, the happy path (request a reset,
+ * follow the link, set a password, sign in) is untestable end to end, and the most
+ * security-sensitive flow in the app would have coverage on its failure cases only.
+ */
+export const MAILPIT_URL = process.env.MAILPIT_URL ?? "http://localhost:8025";
+
+/** Whether a mail sink is actually there. Lets the mail specs skip on a laptop without one. */
+export async function mailpitRunning(): Promise<boolean> {
+  try {
+    const res = await fetch(`${MAILPIT_URL}/api/v1/info`);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Empty the mailbox, so a test reads its own message and not one left by the last test. */
+export async function clearMailbox(): Promise<void> {
+  await fetch(`${MAILPIT_URL}/api/v1/messages`, { method: "DELETE" });
+}
+
+interface MailpitSummary {
+  messages: { ID: string; To: { Address: string }[] }[];
+}
+
+/**
+ * Polls the mailbox for the reset mail sent to `email` and returns the link out of its body.
+ *
+ * The mail is dispatched off the request thread (the backend answers 202 before SMTP is done), so
+ * it is not there the instant the button is clicked — poll rather than assume.
+ */
+export async function waitForResetLink(email: string, timeoutMs = 30_000): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const list = (await (await fetch(`${MAILPIT_URL}/api/v1/messages`)).json()) as MailpitSummary;
+    const message = list.messages.find((m) =>
+      m.To.some((to) => to.Address.toLowerCase() === email.toLowerCase()),
+    );
+
+    if (message) {
+      const body = (await (
+        await fetch(`${MAILPIT_URL}/api/v1/message/${message.ID}`)
+      ).json()) as { Text: string; HTML: string };
+
+      const link = /https?:\/\/\S*?\/reset-password\?token=[\w-]+/.exec(
+        `${body.Text}\n${body.HTML}`,
+      );
+      if (!link) throw new Error(`reset mail to ${email} carried no reset link`);
+      return link[0];
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(`no reset mail arrived for ${email} within ${timeoutMs}ms`);
+}
+
+/** How many messages are sitting in the mailbox for an address. */
+export async function messageCountFor(email: string): Promise<number> {
+  const list = (await (await fetch(`${MAILPIT_URL}/api/v1/messages`)).json()) as MailpitSummary;
+  return list.messages.filter((m) =>
+    m.To.some((to) => to.Address.toLowerCase() === email.toLowerCase()),
+  ).length;
+}

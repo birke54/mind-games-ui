@@ -18,6 +18,8 @@ import type {
   BoardResponse,
   Difficulty,
   RegisterRequest,
+  RequestPasswordResetRequest,
+  ResetPasswordRequest,
   SaveBoardProgress,
 } from "./types";
 
@@ -192,7 +194,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     throw new ApiError(res.status, await errorMessage(res, res.statusText));
   }
 
-  return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
+  // 202 is as body-less as 204: /request_password_reset answers `accepted().build()`. Parsing it
+  // as JSON would throw on the empty string, and the caller would see a SyntaxError rather than
+  // the success it actually got.
+  const noBody = res.status === 204 || res.status === 202;
+  return noBody ? (undefined as T) : ((await res.json()) as T);
 }
 
 /* ---------------------------------------------------------------- auth */
@@ -217,6 +223,52 @@ export async function logout(): Promise<void> {
     // The cookie is cleared server-side regardless; drop the token even if the call failed.
     accessToken = null;
   }
+}
+
+/* ---------------------------------------------------- password reset */
+
+/*
+ * Both of these are `auth: false`, and that flag is load-bearing twice over. It keeps the bearer
+ * header off a request made by someone who by definition cannot authenticate — and, more
+ * importantly, it keeps a rejection out of the silent-refresh path. A 4xx from these two means
+ * "that reset link is no good", not "your session expired": routing it into refreshAccessToken()
+ * would burn the refresh cookie and fire onSessionExpired() at a user who never had a session.
+ */
+
+/**
+ * Asks for a reset link.
+ *
+ * Resolves on 202, which is what the server answers for a registered address, an unregistered one,
+ * and a string that is not an address at all — deliberately, so that the endpoint cannot be used to
+ * discover whether an email has an account. **Callers must not treat resolution as "the address
+ * exists"**, and must render the same thing either way; the client is not the place to leak what
+ * the API was careful to hide.
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+  await request<void>("/api/v1/request_password_reset", {
+    method: "POST",
+    body: { email } satisfies RequestPasswordResetRequest,
+    auth: false,
+  });
+}
+
+/**
+ * Redeems a reset token and sets a new password.
+ *
+ * Throws `ApiError(400)` whose message is the server's, which is the one to show: the backend
+ * distinguishes "this link is invalid or has expired" from "this password is unacceptable" because
+ * the user does something different about each, but deliberately does *not* say which of unknown /
+ * used / expired a bad token was.
+ *
+ * Does not sign the user in — no token comes back. That is the point: a reset proves control of an
+ * inbox, not intent to start a session.
+ */
+export async function resetPassword(token: string, password: string): Promise<void> {
+  await request<void>("/api/v1/reset_password", {
+    method: "POST",
+    body: { token, password } satisfies ResetPasswordRequest,
+    auth: false,
+  });
 }
 
 /* -------------------------------------------------------------- boards */

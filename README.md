@@ -45,6 +45,28 @@ the refresh-cookie session bootstrap, claiming a board, last-write-wins saving �
 things a mock would get wrong. It also runs an [axe](https://github.com/dequelabs/axe-core)
 accessibility audit against every screen, at both a desktop and an iPhone viewport.
 
+### Password-reset specs need a mailbox
+
+`password-reset.spec.ts` reads the reset link out of a real email, because that is the only place it
+exists: the backend stores the token as `sha256(raw)` and never persists the raw value. Without a
+mailbox to read, the happy path cannot be tested at all — which is why the backend sends over SMTP
+rather than through the SES SDK.
+
+So they need [Mailpit](https://github.com/axllent/mailpit), and a backend told to send through it:
+
+```bash
+docker run -d -p 1025:1025 -p 8025:8025 axllent/mailpit   # SMTP on 1025, HTTP API on 8025
+```
+
+then start the backend with `PASSWORD_RESET_MAILER=smtp`, `MAIL_HOST=localhost`, `MAIL_PORT=1025`,
+`MAIL_SMTP_AUTH=false`, `MAIL_SMTP_STARTTLS=false`, and
+`PASSWORD_RESET_URL=http://localhost:4173/reset-password` (the address Playwright actually browses —
+the default points at production, and the test would follow the link there).
+
+Without Mailpit the reset specs **skip** rather than fail, so they stay out of the way on a laptop.
+CI always has it, and `e2e.yml` fails the run if it does not come up. Override the API's location
+with `MAILPIT_URL`.
+
 ## Playing
 
 Cell-first on both platforms: select a cell, then enter a digit.
