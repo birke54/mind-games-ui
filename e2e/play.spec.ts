@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { cell, claimBoard, emptyCells, signUp } from "./helpers";
+import { cell, claimBoard, conflictingMove, emptyCells, signUp } from "./helpers";
 
 test.describe("playing a board", () => {
   test("enter a digit, undo it, pencil a note", async ({ page }) => {
@@ -23,13 +23,17 @@ test.describe("playing a board", () => {
   test("a duplicate digit is flagged as a conflict", async ({ page }) => {
     await signUp(page);
     const board = await claimBoard(page);
-    const [first] = emptyCells(board);
-    const wrong = board.solution[first] === "9" ? "8" : "9";
 
-    await cell(page, first).click();
-    await page.keyboard.press(wrong);
+    // A digit that genuinely repeats among the cell's peers. Picking one merely *different from
+    // the solution* would not do: conflict is a rule violation, not an incorrect answer, and a
+    // wrong digit raises no conflict at all unless it happens to duplicate a peer. That made this
+    // test depend on which board came out of the pool.
+    const { index, digit } = conflictingMove(board);
 
-    await expect(cell(page, first)).toHaveAttribute("aria-label", /conflict/);
+    await cell(page, index).click();
+    await page.keyboard.press(digit);
+
+    await expect(cell(page, index)).toHaveAttribute("aria-label", /conflict/);
   });
 
   /**
