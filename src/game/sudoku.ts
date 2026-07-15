@@ -21,7 +21,6 @@ export function parseGrid(board: string): number[] {
   return Array.from(board, (ch) => ch.charCodeAt(0) - 48);
 }
 
-/** Serializes digits back to the 81-char string the API expects. */
 export function serializeGrid(grid: readonly number[]): string {
   return grid.join("");
 }
