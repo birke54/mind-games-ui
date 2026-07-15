@@ -7,8 +7,12 @@ on:
 
 env:
   AWS_REGION: us-west-2
+  # The AWS account everything below lives in. Kept out of the source as a repository variable so
+  # the account id is not published in a public repo — set it with:
+  #   gh variable set AWS_ACCOUNT_ID --body "123456789012"
+  AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
   # The bucket CloudFront's default behavior serves. Private; reached only via OAC.
-  S3_BUCKET: mind-games-dev-frontend-851725201833-us-west-2-an
+  S3_BUCKET: mind-games-dev-frontend-${{ vars.AWS_ACCOUNT_ID }}-us-west-2-an
   # The distribution that also fronts /api/* — which is what makes the app same-origin with the API,
   # and is the only reason the refresh cookie (SameSite=Strict, Path=/api/v1) survives a login.
   # Set it with:  gh variable set CLOUDFRONT_DISTRIBUTION_ID --body "E..."
@@ -43,7 +47,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::851725201833:role/mind-games-dev-gha-ui
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/mind-games-dev-gha-ui
           aws-region: ${{ env.AWS_REGION }}
 
       # Two passes, because the caching rules are opposite.

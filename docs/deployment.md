@@ -18,15 +18,16 @@ What follows is only the **default behavior**, which serves this app.
 
 ## 1. The bucket
 
-**It already exists**, in `us-west-2`:
+**It already exists**, in `us-west-2` (where `<ACCOUNT_ID>` is the AWS account number):
 
 ```
-mind-games-dev-frontend-851725201833-us-west-2-an
+mind-games-dev-frontend-<ACCOUNT_ID>-us-west-2-an
 ```
 
-That name is what `.github/workflows/deploy.yml` syncs to. If you ever replace the bucket, the
-workflow's `S3_BUCKET` has to change with it — a deploy pointed at a bucket CloudFront isn't serving
-fails silently, in the worst way: green build, no change to the site.
+That name is what `.github/workflows/deploy.yml` syncs to. The workflow builds it from the
+`AWS_ACCOUNT_ID` repository variable (see §4), so the account number is not written into the repo. If
+you ever replace the bucket, the workflow's `S3_BUCKET` has to change with it — a deploy pointed at a
+bucket CloudFront isn't serving fails silently, in the worst way: green build, no change to the site.
 
 Keep it private. CloudFront reaches it through an Origin Access Control; nothing else should. Leave
 S3 Block Public Access **on** — the OAC bucket policy (step 2) is what lets CloudFront in.
@@ -98,7 +99,7 @@ scoped to this repository:
   "Version": "2012-10-17",
   "Statement": [{
     "Effect": "Allow",
-    "Principal": { "Federated": "arn:aws:iam::851725201833:oidc-provider/token.actions.githubusercontent.com" },
+    "Principal": { "Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com" },
     "Action": "sts:AssumeRoleWithWebIdentity",
     "Condition": {
       "StringEquals": { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
@@ -120,9 +121,9 @@ Attach this permissions policy:
   "Version": "2012-10-17",
   "Statement": [
     { "Effect": "Allow", "Action": "s3:ListBucket",
-      "Resource": "arn:aws:s3:::mind-games-dev-frontend-851725201833-us-west-2-an" },
+      "Resource": "arn:aws:s3:::mind-games-dev-frontend-<ACCOUNT_ID>-us-west-2-an" },
     { "Effect": "Allow", "Action": ["s3:PutObject", "s3:DeleteObject"],
-      "Resource": "arn:aws:s3:::mind-games-dev-frontend-851725201833-us-west-2-an/*" },
+      "Resource": "arn:aws:s3:::mind-games-dev-frontend-<ACCOUNT_ID>-us-west-2-an/*" },
     { "Effect": "Allow",
       "Action": [
         "cloudfront:CreateInvalidation",
@@ -137,7 +138,7 @@ Attach this permissions policy:
         "ecr:BatchGetImage",
         "ecr:GetDownloadUrlForLayer"
       ],
-      "Resource": "arn:aws:ecr:us-west-2:851725201833:repository/mind-games-backend" }
+      "Resource": "arn:aws:ecr:us-west-2:<ACCOUNT_ID>:repository/mind-games-backend" }
   ]
 }
 ```
@@ -153,13 +154,19 @@ Three of those are newer than the original deploy and easy to miss:
 - **`ecr:*`** — `e2e.yml` pulls the backend image to run the end-to-end suite against a real API. Only
   needed if you run that workflow; the read-only actions are scoped to the one repository.
 
-Then put the role's ARN into `deploy.yml` as `role-to-assume`, and set the distribution id as a
-repository variable (**Settings → Secrets and variables → Actions → Variables**), since the workflow
-reads `vars.CLOUDFRONT_DISTRIBUTION_ID`:
+Both workflows build the role ARN, the bucket name and the ECR ARN from an `AWS_ACCOUNT_ID`
+repository variable rather than hard-coding the account number, so set it too. Add these under
+**Settings → Secrets and variables → Actions → Variables** (the workflows read `vars.AWS_ACCOUNT_ID`
+and `vars.CLOUDFRONT_DISTRIBUTION_ID`):
 
 ```bash
+gh variable set AWS_ACCOUNT_ID --body "123456789012"
 gh variable set CLOUDFRONT_DISTRIBUTION_ID --body "E1234567890ABC"
 ```
+
+The role name (`mind-games-dev-gha-ui`) is still literal in the workflows; only the account number is
+externalised. An unset `AWS_ACCOUNT_ID` yields an ARN like `arn:aws:iam:::role/...`, which fails at
+*Configure AWS credentials* — so if that step errors on a malformed ARN, the variable is missing.
 
 > Until that role exists, the deploy job fails at *Configure AWS credentials (OIDC)* with
 > **"Not authorized to perform sts:AssumeRoleWithWebIdentity"**. That error means no role in the
