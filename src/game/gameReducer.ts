@@ -81,8 +81,6 @@ export type GameAction =
       completedAt: string | null;
     };
 
-/* ------------------------------------------------------------------ notes */
-
 export function notesFromWire(wire: Record<string, number[]>): Notes {
   const notes = new Map<number, ReadonlySet<number>>();
   for (const [index, digits] of Object.entries(wire)) {
@@ -98,8 +96,6 @@ export function notesToWire(notes: Notes): Record<string, number[]> {
   }
   return wire;
 }
-
-/* ------------------------------------------------------------------ state */
 
 export function initialState(board: BoardResponse): GameState {
   return {
@@ -304,8 +300,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return state;
   }
 }
-
-/* --------------------------------------------------------------- selectors */
 
 /** An edit the server has not acknowledged. Drives the debounce — ticks must not restart it. */
 export const hasUnsavedEdits = (s: GameState): boolean => s.revision !== s.savedRevision;
