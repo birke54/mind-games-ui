@@ -11,8 +11,9 @@ were found only by running the thing against a real API, not by reading the code
 
 ## 1. What the backend actually gives us
 
-Read from `mind-games-backend` (`ApiController`, `SecurityConfig`, `BoardResponse`, `V1__Initial_schema.sql`,
-`docs/aws-deployment.md`). This is the entire surface — there is nothing else to call.
+Read from `mind-games-backend` (`ApiController`, `SecurityConfig`, `BoardResponse`, `PasswordResetService`,
+`PasswordPolicy`, `V1__Initial_schema.sql`, `docs/aws-deployment.md`). This is the entire surface — there
+is nothing else to call.
 
 | Method | Path | Auth | Body / params | Success | Failures |
 |---|---|---|---|---|---|
@@ -21,9 +22,17 @@ Read from `mind-games-backend` (`ApiController`, `SecurityConfig`, `BoardRespons
 | POST | `/api/v1/authenticate_user` | public | `{username, password}` | `200 {accessToken}` + `Set-Cookie` | `401` bad creds / locked out |
 | POST | `/api/v1/refresh` | cookie | — | `200 {accessToken}` + rotated cookie | `401` (cookie cleared) |
 | POST | `/api/v1/logout` | cookie | — | `204` + cookie cleared | — |
+| POST | `/api/v1/request_password_reset` | public | `{email}` | `202`, empty body, **unconditionally** | — |
+| POST | `/api/v1/reset_password` | public | `{token, password}` | `204`, no session started | `400 {error}` dead link *or* rejected password |
 | GET | `/api/v1/board?difficulty=` | bearer | `easy\|moderate\|hard` | `200 BoardResponse` | `400` bad difficulty, `503` pool empty |
 | GET | `/api/v1/boards` | bearer | — | `200 BoardResponse[]` (newest activity first) | — |
 | PUT | `/api/v1/boards/{id}` | bearer | `{currentState, notes, elapsedSeconds}` | `200 BoardResponse` | `404` not yours, `409` already completed |
+
+The password policy (`PasswordPolicy`) is **≥ 10 characters and ≤ 72 *bytes* of UTF-8** — bytes, not
+characters, because BCrypt silently truncates at 72 and the backend would rather reject than quietly
+ignore the tail. Register and reset are judged by the same rule, so both forms enforce the same rule
+(`PASSWORD_MIN_LENGTH` / `PASSWORD_MAX_LENGTH_BYTES` in `api/types.ts`). The byte limit is why the
+password field cannot simply carry a `maxLength` attribute.
 
 `BoardResponse`:
 
@@ -43,7 +52,7 @@ type BoardResponse = {
 };
 ```
 
-### The seven constraints that drive every decision below
+### The eight constraints that drive every decision below
 
 1. **There is no CORS configuration anywhere in the backend.** Not in `SecurityConfig`, not in
    `application.yaml`. A cross-origin browser call with `Content-Type: application/json` triggers a
@@ -75,6 +84,13 @@ type BoardResponse = {
    solution comes back `status: "completed"` with `completedAt`; every later save on that board is
    `409`. The client can *predict* completion locally, but the server's response is the truth, and
    after it we stop accepting input and stop saving.
+
+8. **`request_password_reset` is deliberately blind.** It answers `202` for a registered address, an
+   unregistered one, and a string that is not an address at all — so that nobody can use it to
+   discover whether an email has an account. The client must render the *same* confirmation in every
+   case; a spinner that resolves differently would leak exactly what the API was careful to hide.
+   (`reset_password`, by contrast, does distinguish "this link is no good" from "this password is
+   unacceptable", because the user does something different about each.)
 
 ---
 
@@ -116,14 +132,17 @@ src/
     Board.tsx  Cell.tsx  NumberPad.tsx  Controls.tsx
   routes/
     HomePage.tsx  PlayPage.tsx  StatsPage.tsx  LoginPage.tsx  RegisterPage.tsx
-e2e/                 # Playwright: auth, play, offline, a11y — against a real backend
+    ForgotPasswordPage.tsx  ResetPasswordPage.tsx   # public — see §7
+e2e/                 # Playwright: auth, play, offline, a11y, password-reset — against a real backend
 ```
 
-The four files under `game/` with no `use` prefix are pure — no network, no clock, no DOM — which is
-why the rules, the stats and the conflict logic can be tested directly and the components above them
-stay dumb. That's where most of the test suite lives.
+`sudoku.ts`, `gameReducer.ts` and `stats.ts` are pure — no network, no clock, no DOM — which is why
+the rules, the stats and the conflict logic can be tested directly and the components above them stay
+dumb. That's where most of the test suite lives. `boardMirror.ts` is the one exception among the
+non-`use` files: it touches `localStorage`, but the decision that matters in it — `reconcile()`, §6 —
+is a pure function of the server's board and the mirror, and is tested as one.
 
-### The API client (the part worth getting right)
+### The API client
 
 ```ts
 // api/client.ts — sketch
@@ -140,19 +159,23 @@ async function refresh(): Promise<string> {
   return refreshInFlight;
 }
 
-export async function apiFetch(path: string, init: RequestInit = {}, retry = true) {
+// `auth: false` marks the public endpoints — login, register, and the two password-reset calls.
+// A 4xx from those means "wrong password" or "dead reset link", NOT "your session expired": routing
+// one into refresh() would burn the refresh cookie and sign out a user who never had a session.
+export async function apiFetch(path: string, init: RequestInit = {}, auth = true, retry = true) {
   const res = await fetch(path, {
     ...init,
     credentials: "include",
     headers: {
       ...init.headers,
       "Content-Type": "application/json",
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...(auth && accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
   });
-  if (res.status === 401 && retry) {
+  // 401 *or* 403 — an expired token arrives anonymous and Spring answers 403. See §8, item 0.
+  if (isAuthFailure(res.status) && auth && retry) {
     await refresh();          // throws SessionExpired -> AuthProvider routes to /login
-    return apiFetch(path, init, false);
+    return apiFetch(path, init, auth, false);
   }
   return res;
 }
@@ -209,9 +232,10 @@ DESKTOP (>= 900px)                     MOBILE (< 900px, portrait)
 Cell-first ("select a cell, then a digit") on both platforms — it's the one model that works with a
 mouse, a thumb, and a keyboard.
 
-**Desktop:** click to select; arrow keys move; `1`–`9` enter; `Backspace`/`Delete` erase; `Shift`+digit
-(or toggle `N`) for notes; `H` for a hint; `C` to check; `Ctrl+Z` / `Ctrl+Shift+Z` undo/redo. The whole
-game is playable without touching the mouse — that's the desktop power-user promise.
+**Desktop:** click to select; arrow keys or `WASD` move; `1`–`9` enter; `Backspace`/`Delete`/`0` erase;
+`Shift`+digit (or toggle `N`) for notes; `H` for a hint; `C` to check; `Ctrl+Z` / `Ctrl+Shift+Z` (or
+`Ctrl+Y`) undo/redo. The whole game is playable without touching the mouse — that's the desktop
+power-user promise.
 
 **Key handling binds to the window, not to the grid** (`useKeyboard`). Binding it to the grid element
 is the natural-looking mistake: clicking any control — Notes, Check, a pad digit — moves DOM focus
@@ -263,19 +287,32 @@ type GameState = {
   puzzle: string;                 // immutable; givens are puzzle[i] !== '0'
   solution: string;               // never rendered
   grid: number[];                 // 81, 0 = empty
-  notes: Map<number, Set<number>>;
+  notes: ReadonlyMap<number, ReadonlySet<number>>;
   selected: number | null;
   notesMode: boolean;
+  paused: boolean;
+  checking: boolean;              // "am I right so far?" — one-shot, retired by the next edit
+  hintsUsed: number;              // client-only; the backend has nowhere to record it
   elapsedSeconds: number;
   status: "in_progress" | "completed";
+  completedAt: string | null;
   past: Snapshot[]; future: Snapshot[];   // undo/redo, client-only
-  dirty: boolean;                 // drives autosave
+  revision: number;               // bumped on every change the server needs to hear about
+  savedRevision: number;          // …and the revision it has actually acknowledged
+  savedElapsedSeconds: number;    // the clock's own high-water mark — see §6
 };
 ```
 
-Actions: `HYDRATE`, `SELECT`, `MOVE`, `DIGIT`, `TOGGLE_NOTE`, `ERASE`, `NOTES_MODE`, `UNDO`, `REDO`,
-`TICK`, `SAVED`, `COMPLETED`. A `DIGIT` on a given cell is a no-op — the reducer enforces it, not the
-component.
+Actions: `HYDRATE`, `SELECT`, `MOVE`, `INPUT_DIGIT`, `ERASE`, `HINT`, `CHECK`, `TOGGLE_NOTES_MODE`,
+`SET_PAUSED`, `UNDO`, `REDO`, `TICK`, `SAVED`. A digit on a given cell is a no-op, and a board that
+has come back `completed` accepts no edits at all — the reducer enforces both, not the components.
+Notes are not a separate action: `INPUT_DIGIT` carries `asNote`, so `Shift`+digit pencils a mark
+without leaving whatever mode the player is in.
+
+There is no `dirty` boolean and no `COMPLETED` action, and both absences are deliberate. Unsaved
+work is `revision !== savedRevision`, because a boolean would be cleared by a save that is still in
+flight and lose every edit made while it was — see §6. Completion arrives as a `SAVED` carrying the
+server's `status`, since the server is the one that decides it (constraint 7).
 
 Undo/redo is purely client-side (the backend has no concept of it) and is dropped on reload, which is
 fine and expected.
@@ -360,16 +397,21 @@ completed elsewhere — treat it as success and freeze. A board arriving from `/
 
 ## 7. Routes and screens
 
-| Route | Screen | Notes |
-|---|---|---|
-| `/login` | Login | On `401`, surface the server's message — lockout is a real state (`SECURITY_LOCKOUT_THRESHOLD`), not just "wrong password". Handle `429`: API Gateway throttles auth to 5 rps and register to **1 rps / burst 3**. |
-| `/register` | Register | Mirror the server's validation: username ≤ 25, email ≤ 50 and format-checked, password non-blank. `409` → "username or email already taken". |
-| `/` | Home | Difficulty picker (easy / moderate / hard) → `GET /board`; below it, the in-progress boards from `GET /boards` to resume. `503` → "we're baking fresh puzzles, try again in a moment" with a retry that backs off (the pool refills on a 5-minute cron). |
-| `/play/:boardId` | Play | The grid. Hydrates from the query cache or the localStorage mirror. |
-| `/stats` | Stats | **Free win:** `GET /boards` already returns every board with status, difficulty, and `elapsedSeconds`. Completed count, best and average time per difficulty, current streak — all derived client-side, zero backend work. |
+| Route | Screen | Auth | Notes |
+|---|---|---|---|
+| `/login` | Login | public | The server strips the reason from a `401` (§8, item 0b), so the copy is ours — and a locked-out account (`SECURITY_LOCKOUT_THRESHOLD`) is, unhappily, indistinguishable from a wrong password. Handle `429`: API Gateway throttles auth to 5 rps and register to **1 rps / burst 3**. |
+| `/register` | Register | public | Mirror the server's validation: username ≤ 25, email ≤ 50 and format-checked, password ≥ 10 chars and ≤ 72 UTF-8 bytes. `409` → "username or email already taken". |
+| `/forgot-password` | Forgot password | public | Email → `POST /request_password_reset`. Renders one neutral confirmation no matter what comes back (constraint 8) — it must not become an account-enumeration oracle. |
+| `/reset-password?token=` | Reset password | public | Redeems the token from the emailed link. The link deep-links straight in, which works because CloudFront already maps `403`/`404` → `/index.html` (`docs/deployment.md` §2) — no infrastructure change. The raw token stays in the URL and is never persisted. Success does **not** sign you in: it sends you to `/login`, because a reset proves control of an inbox, not intent to start a session. |
+| `/` | Home | guarded | Difficulty picker (easy / moderate / hard) → `GET /board`; below it, the in-progress boards from `GET /boards` to resume. `503` → "we're baking fresh puzzles, try again in a moment" with a retry that backs off (the pool refills on a 5-minute cron). |
+| `/play/:boardId` | Play | guarded | The grid. Hydrates from the query cache or the localStorage mirror. |
+| `/stats` | Stats | guarded | **Free win:** `GET /boards` already returns every board with status, difficulty, and `elapsedSeconds`. Completed count, best and average time per difficulty, current streak — all derived client-side, zero backend work. |
 
-PWA (phase 4): web-app manifest, installable to a phone home screen, service worker precaching the
-shell so a claimed board opens offline.
+The two reset screens are public by necessity: a user who needs them cannot authenticate, by
+definition. Everything else sits behind `RequireAuth`.
+
+PWA (shipped in phase 4): web-app manifest, installable to a phone home screen, service worker
+precaching the shell so a claimed board opens offline.
 
 ---
 
@@ -392,6 +434,13 @@ found by running the front-end against the real backend, not by reading it.
    `never`, so the reason is stripped and the body is just `{"error": "Unauthorized"}`. The practical
    cost: a **locked-out account is indistinguishable from a wrong password**, so we can't tell the user
    why they can't get in. Needs either `include-message: always` or a structured error body.
+
+   Still open, and now visibly worked around: `/v1/reset_password` and `/v1/refresh` build their
+   error bodies by hand (`ResponseEntity.badRequest().body(Map.of("error", …))`) precisely to dodge
+   this, which is why the reset screen can say *"this link has expired"* versus *"pick a better
+   password"* while the login screen cannot say *"you are locked out"*. The client reads
+   `body.message ?? body.error` and every new endpoint has to remember to hand-roll the body. One
+   `@ControllerAdvice` would settle it for all of them.
 
 1. **Optimistic concurrency on `PUT /boards/{id}`** *(highest value)*. A `version` column, or honouring
    `If-Unmodified-Since`, so a stale device gets a `409` instead of silently destroying progress.
@@ -439,18 +488,25 @@ Same-origin is non-negotiable (constraint 1), so the dev server proxies:
 
 ```ts
 // vite.config.ts
+const proxy = {
+  "/api": { target: process.env.VITE_API_TARGET ?? "http://localhost:8080", changeOrigin: false },
+};
+
 export default defineConfig({
-  plugins: [react()],
-  server: {
-    proxy: { "/api": { target: "http://localhost:8080", changeOrigin: false } },
-  },
+  plugins: [react(), tailwindcss(), VitePWA({ /* … */ })],
+  server: { port: 5173, proxy },
+  preview: { port: 4173, proxy },   // `vite preview` serves the real build; e2e runs against it
 });
 ```
 
 `changeOrigin: false` keeps the `Host` header intact and the cookie's `Path=/api/v1` scope matches
-without translation. Run the backend with `COOKIE_SECURE=false` (otherwise the browser drops the
-refresh cookie over plain HTTP) and `ORIGIN_VERIFY_SECRET` blank (otherwise
+without translation. The `preview` server needs the same proxy for the same reason — it is what the
+Playwright suite drives, service worker and all. Run the backend with `COOKIE_SECURE=false` (otherwise
+the browser drops the refresh cookie over plain HTTP) and `ORIGIN_VERIFY_SECRET` blank (otherwise
 `OriginVerificationFilter` `403`s everything). Both are already the documented local defaults.
+
+The password-reset e2e specs additionally need an SMTP server to read the emailed link out of — the
+raw token exists nowhere else. See the README; without one they skip rather than fail.
 
 **Deploy:** `vite build` → sync `dist/` to the S3 bucket behind CloudFront's default behavior, then
 invalidate. Hashed assets get `immutable` caching; `index.html` must be `no-cache` or users pin to a
@@ -469,6 +525,7 @@ backend's `build-push-ecr.yml` (OIDC role, no long-lived keys) does the sync.
 | **2** | Selection, desktop keyboard + mobile number pad, notes, undo/redo, timer, autosave, completion | A playable game on both form factors. This is the demo. | **done — verified end to end, including solving a board** |
 | **3** | Hints & check, derived stats page, resume-list polish | Feature-complete for a v1. | **done — verified end to end** |
 | **4** | S3/CloudFront deploy workflow, PWA + offline play, a11y audit, Playwright e2e at both viewports | Ship quality. | **done** |
+| **5** | Forgot / reset password, end to end through a real inbox | An account is recoverable. Until this, a forgotten password was a dead account. | **done — verified against Mailpit, link read out of a real email** |
 
 Phases 0–1 are where the risk is; 2 is where the product appears.
 
@@ -486,6 +543,8 @@ mistake about how the *real* system behaves rather than about the logic:
 | 4 | axe found four WCAG violations, including a primary button at 4.02:1 and body text at 3.79:1. |
 | 4 | The board mirror stored only the moves, so an offline reload rendered *"that board isn't yours"* over a board in the player's hand. |
 | 4 | The session bootstrap treated an unsendable request as a dead session, so **going offline logged you out**. |
+| 5 | `/request_password_reset` answers **202 with an empty body**; parsing it as JSON threw a `SyntaxError` on the success path, so a reset that had been sent looked like a failure. |
+| 5 | The reset link is only readable from a real inbox — the backend stores `sha256(raw)` and never keeps the raw token — so the happy path is untestable without a mailbox. The e2e suite runs one (Mailpit); see the README. |
 
 The pattern is consistent enough to be worth stating: the bugs live in the seams between the client
 and the things around it — the backend's actual status codes, the browser's event loop, the network.
