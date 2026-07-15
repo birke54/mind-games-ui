@@ -16,3 +16,6 @@ blob-report/
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# Claude Code
+CLAUDE.md
