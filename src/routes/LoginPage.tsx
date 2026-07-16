@@ -17,7 +17,7 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
 
   if (status === "authenticated") {
-    return <Navigate to={location.state?.from ?? "/"} replace />;
+    return <Navigate to={location.state?.from ?? "/games"} replace />;
   }
 
   async function onSubmit(e: FormEvent) {
@@ -26,7 +26,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await login(username, password);
-      navigate(location.state?.from ?? "/", { replace: true });
+      navigate(location.state?.from ?? "/games", { replace: true });
     } catch (err) {
       // The backend throws ResponseStatusException(401, reason), but Spring's
       // server.error.include-message defaults to `never`, so the reason is stripped from the

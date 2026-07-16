@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { SessionExpiredError } from "./api/client";
 import { AuthProvider, RequireAuth } from "./auth/AuthProvider";
 import ForgotPasswordPage from "./routes/ForgotPasswordPage";
+import GamesPage from "./routes/GamesPage";
 import HomePage from "./routes/HomePage";
 import LoginPage from "./routes/LoginPage";
 import PlayPage from "./routes/PlayPage";
@@ -37,6 +38,14 @@ export default function App() {
             */}
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route
+              path="/games"
+              element={
+                <RequireAuth>
+                  <GamesPage />
+                </RequireAuth>
+              }
+            />
             <Route
               path="/"
               element={

@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { cell, claimBoard, emptyCells, signUp } from "./helpers";
+import { cell, claimBoard, emptyCells, register, signUp } from "./helpers";
 
 /** WCAG 2.1 A and AA. Run the audit; don't eyeball it. */
 const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
@@ -56,6 +56,13 @@ test.describe("accessibility", () => {
   test("the dead-link screen", async ({ page }) => {
     await page.goto("/reset-password");
     await expect(page.getByRole("link", { name: "Request a new link" })).toBeVisible();
+
+    const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+    expect(violations).toEqual([]);
+  });
+
+  test("the game hub", async ({ page }) => {
+    await register(page); // lands on /games and stays there
 
     const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
     expect(violations).toEqual([]);
