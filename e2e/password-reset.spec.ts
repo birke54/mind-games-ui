@@ -59,7 +59,8 @@ test.describe("password reset", () => {
     await page.getByPlaceholder("Username").fill(username);
     await page.getByPlaceholder("Password").fill(NEW_PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL("/", { timeout: 20_000 });
+    // A fresh sign-in lands on the game hub — proof enough that the new password works.
+    await page.waitForURL("/games", { timeout: 20_000 });
   });
 
   test("the old password stops working once the new one is set", async ({ page }) => {
