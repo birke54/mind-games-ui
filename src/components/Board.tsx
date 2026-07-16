@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { GameAction, GameState } from "../game/gameReducer";
-import { conflicts, mistakes, peersOf } from "../game/sudoku";
+import { conflicts, mistakes } from "../game/sudoku";
 import { Cell } from "./Cell";
 
 /**
@@ -30,10 +30,6 @@ export function Board({
     [state.checking, state.grid, state.solution],
   );
 
-  const peers = useMemo(
-    () => (state.selected === null ? new Set<number>() : new Set(peersOf(state.selected))),
-    [state.selected],
-  );
   const selectedDigit = state.selected === null ? 0 : (state.grid[state.selected] ?? 0);
 
   // Keep DOM focus on the selected cell so the roving tabindex actually roves — otherwise the
@@ -78,7 +74,6 @@ export function Board({
                 notes={state.notes.get(i)}
                 given={state.puzzle[i] !== "0"}
                 selected={state.selected === i}
-                peer={peers.has(i)}
                 matching={digit !== 0 && digit === selectedDigit && state.selected !== i}
                 conflicted={conflicted.has(i)}
                 mistaken={mistaken.has(i)}

@@ -7,8 +7,6 @@ export interface CellProps {
   notes: ReadonlySet<number> | undefined;
   given: boolean;
   selected: boolean;
-  /** Shares a row, column, or box with the selection. */
-  peer: boolean;
   /** Holds the same digit as the selected cell. */
   matching: boolean;
   /** Duplicates a digit among its peers. */
@@ -29,7 +27,6 @@ export const Cell = memo(function Cell({
   notes,
   given,
   selected,
-  peer,
   matching,
   conflicted,
   mistaken,
@@ -40,14 +37,16 @@ export const Cell = memo(function Cell({
   const col = colOf(index);
   const wrong = conflicted || mistaken;
 
+  // Given (clue) cells carry a slightly lighter fill than the empty cells the player can edit, so
+  // the fixed scaffold of the puzzle reads at a glance. Selection/match/mistake states still win.
   const background = mistaken
     ? "bg-rose-500/25"
     : selected
       ? "bg-sky-500/30"
       : matching
         ? "bg-sky-500/15"
-        : peer
-          ? "bg-slate-700/40"
+        : given
+          ? "bg-slate-700/50"
           : "bg-slate-900";
 
   const digitColor = wrong ? "text-rose-400" : given ? "text-slate-100" : "text-sky-300";
