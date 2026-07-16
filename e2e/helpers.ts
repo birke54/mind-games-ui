@@ -36,8 +36,12 @@ export async function signIn(page: Page, username: string): Promise<void> {
   await page.getByPlaceholder("Username").fill(username);
   await page.getByPlaceholder("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/games", { timeout: 20_000 });
-  await openSudoku(page);
+  // A fresh sign-in lands on the hub; a sign-in that resumes a guarded route you were bounced from
+  // returns there directly (e.g. signing out on "/" then back in). Either way, land on "/".
+  await page.waitForURL((url) => url.pathname === "/games" || url.pathname === "/", {
+    timeout: 20_000,
+  });
+  if (new URL(page.url()).pathname === "/games") await openSudoku(page);
 }
 
 export interface Board {
