@@ -25,13 +25,15 @@ test.describe("authentication", () => {
   });
 
   // The post-login landing is the game hub, not a game. Its Sudoku tile is the way into Sudoku;
-  // the second tile is a placeholder for games still to come.
+  // the second tile is a placeholder for games still to come. Enter the way a real visitor does —
+  // at the root, which bounces to /login — because the root bounce must NOT pin login back to "/".
   test("signing in lands on the game hub, whose Sudoku tile opens the game", async ({ page }) => {
     const username = await register(page); // lands on /games
     await page.getByRole("button", { name: "Sign out" }).click();
     await expect(page).toHaveURL(/\/login$/);
 
-    await page.goto("/login");
+    await page.goto("/");
+    await expect(page).toHaveURL(/\/login$/);
     await page.getByPlaceholder("Username").fill(username);
     await page.getByPlaceholder("Password").fill(PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();

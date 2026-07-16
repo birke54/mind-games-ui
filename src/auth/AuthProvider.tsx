@@ -176,7 +176,12 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   }
 
   if (status === "anonymous") {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    // "/" is the generic entry point, not a deliberate deep link. Recording it as `from` would pin
+    // every login that starts at the root back to the Sudoku home and never show the hub — the
+    // normal way in is the root, so that would be everyone. A deeper guarded route (/play/42,
+    // /stats) is a real destination worth returning to, so preserve those.
+    const from = location.pathname === "/" ? undefined : location.pathname;
+    return <Navigate to="/login" replace state={from ? { from } : undefined} />;
   }
 
   return <>{children}</>;
