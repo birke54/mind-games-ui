@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { ApiError } from "../api/client";
+import GamePreviewTiles from "../components/GamePreviewTiles";
 
 export default function LoginPage() {
   const { status, login } = useAuth();
@@ -46,58 +47,62 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-dvh place-items-center px-4">
-      <form onSubmit={(e) => void onSubmit(e)} className="w-full max-w-sm space-y-4">
-        <h1 className="text-center text-3xl font-semibold tracking-tight">Cortex Clash</h1>
+    <main className="grid min-h-dvh place-items-center px-4 py-8">
+      <div className="flex w-full flex-col items-center gap-8">
+        <form onSubmit={(e) => void onSubmit(e)} className="w-full max-w-sm space-y-4">
+          <h1 className="text-center text-3xl font-semibold tracking-tight">Cortex Clash</h1>
 
-        {notice && (
-          <p role="status" className="text-sm text-emerald-400">
-            {notice}
+          {notice && (
+            <p role="status" className="text-sm text-emerald-400">
+              {notice}
+            </p>
+          )}
+
+          <input
+            className="field"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Username"
+            autoComplete="username"
+            maxLength={25}
+            required
+          />
+          <input
+            className="field"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            autoComplete="current-password"
+            required
+          />
+
+          {error && (
+            <p role="alert" className="text-sm text-rose-400">
+              {error}
+            </p>
+          )}
+
+          <button type="submit" disabled={busy} className="btn-primary w-full">
+            {busy ? "Signing in…" : "Sign in"}
+          </button>
+
+          <p className="text-center text-sm text-slate-400">
+            <Link to="/forgot-password" className="text-sky-400 underline">
+              Forgot password?
+            </Link>
           </p>
-        )}
 
-        <input
-          className="field"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          placeholder="Username"
-          autoComplete="username"
-          maxLength={25}
-          required
-        />
-        <input
-          className="field"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
-          autoComplete="current-password"
-          required
-        />
-
-        {error && (
-          <p role="alert" className="text-sm text-rose-400">
-            {error}
+          <p className="text-center text-sm text-slate-400">
+            No account?{" "}
+            <Link to="/register" className="text-sky-400 underline">
+              Register
+            </Link>
           </p>
-        )}
+        </form>
 
-        <button type="submit" disabled={busy} className="btn-primary w-full">
-          {busy ? "Signing in…" : "Sign in"}
-        </button>
-
-        <p className="text-center text-sm text-slate-400">
-          <Link to="/forgot-password" className="text-sky-400 underline">
-            Forgot password?
-          </Link>
-        </p>
-
-        <p className="text-center text-sm text-slate-400">
-          No account?{" "}
-          <Link to="/register" className="text-sky-400 underline">
-            Register
-          </Link>
-        </p>
-      </form>
+        <GamePreviewTiles />
+      </div>
     </main>
   );
 }
