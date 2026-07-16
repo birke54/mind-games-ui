@@ -42,6 +42,11 @@ test.describe("authentication", () => {
     await page.getByRole("link", { name: "Sudoku" }).click();
     await expect(page).toHaveURL("/");
     await expect(page.getByRole("heading", { name: "New game" })).toBeVisible();
+
+    // ...and back out to the games list.
+    await page.getByRole("link", { name: "Games" }).click();
+    await expect(page).toHaveURL("/games");
+    await expect(page.getByRole("heading", { name: "Choose your game" })).toBeVisible();
   });
 
   /**
