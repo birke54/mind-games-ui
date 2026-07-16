@@ -1,3 +1,5 @@
+import { MoreGamesIcon, SudokuIcon } from "./GameIcons";
+
 /** Marketing tiles under the login form: a preview of what Cortex Clash offers. */
 export default function GamePreviewTiles() {
   return (
@@ -21,35 +23,5 @@ export default function GamePreviewTiles() {
         </li>
       </ul>
     </section>
-  );
-}
-
-function SudokuIcon() {
-  const digits = ["5", "", "", "", "3", "", "", "", "8"];
-  return (
-    <div
-      aria-hidden
-      className="grid grid-cols-3 gap-px overflow-hidden rounded-md border border-sky-500/40 bg-sky-500/20"
-    >
-      {digits.map((d, i) => (
-        <span
-          key={i}
-          className="grid h-6 w-6 place-items-center bg-slate-800 text-xs font-semibold text-sky-300"
-        >
-          {d}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function MoreGamesIcon() {
-  return (
-    <div
-      aria-hidden
-      className="grid h-[74px] w-[74px] place-items-center rounded-md border border-slate-600 bg-slate-800 text-2xl font-semibold text-slate-500"
-    >
-      +
-    </div>
   );
 }

@@ -7,14 +7,28 @@ export function newUsername(prefix = "e2e"): string {
   return `${prefix}${Date.now()}${Math.floor(Math.random() * 1000)}`;
 }
 
-export async function signUp(page: Page, username = newUsername()): Promise<string> {
+/** Register a fresh account. Signing in lands on the game hub (/games), not straight in a game. */
+export async function register(page: Page, username = newUsername()): Promise<string> {
   await page.goto("/register");
   await page.getByPlaceholder("Username").fill(username);
   await page.getByPlaceholder("Email").fill(`${username}@example.com`);
   await page.getByPlaceholder("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create account" }).click();
-  await page.waitForURL("/", { timeout: 20_000 });
+  await page.waitForURL("/games", { timeout: 20_000 });
   return username;
+}
+
+/** From the game hub, open Sudoku — the "/" home where a game is started. */
+export async function openSudoku(page: Page): Promise<void> {
+  await page.getByRole("link", { name: "Sudoku" }).click();
+  await page.waitForURL("/", { timeout: 20_000 });
+}
+
+/** The common path for game tests: register, then step through the hub to the Sudoku home. */
+export async function signUp(page: Page, username = newUsername()): Promise<string> {
+  const created = await register(page, username);
+  await openSudoku(page);
+  return created;
 }
 
 export async function signIn(page: Page, username: string): Promise<void> {
@@ -22,7 +36,8 @@ export async function signIn(page: Page, username: string): Promise<void> {
   await page.getByPlaceholder("Username").fill(username);
   await page.getByPlaceholder("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("/", { timeout: 20_000 });
+  await page.waitForURL("/games", { timeout: 20_000 });
+  await openSudoku(page);
 }
 
 export interface Board {

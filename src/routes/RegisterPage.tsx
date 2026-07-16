@@ -42,7 +42,7 @@ export default function RegisterPage() {
       await api.register({ username, email, password });
       // Register does not mint tokens, so sign in with the credentials we already have.
       await login(username, password);
-      navigate("/", { replace: true });
+      navigate("/games", { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setError("That username or email is already taken.");

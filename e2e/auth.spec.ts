@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { PASSWORD, newUsername, signIn, signUp } from "./helpers";
+import { PASSWORD, newUsername, register, signIn, signUp } from "./helpers";
 
 /**
  * Signed in means: on the home screen, with a game to start. Deliberately NOT "the username is on
@@ -22,6 +22,26 @@ test.describe("authentication", () => {
   test("registering signs you straight in", async ({ page }) => {
     await signUp(page);
     await expectSignedIn(page);
+  });
+
+  // The post-login landing is the game hub, not a game. Its Sudoku tile is the way into Sudoku;
+  // the second tile is a placeholder for games still to come.
+  test("signing in lands on the game hub, whose Sudoku tile opens the game", async ({ page }) => {
+    const username = await register(page); // lands on /games
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page).toHaveURL(/\/login$/);
+
+    await page.goto("/login");
+    await page.getByPlaceholder("Username").fill(username);
+    await page.getByPlaceholder("Password").fill(PASSWORD);
+    await page.getByRole("button", { name: "Sign in" }).click();
+
+    await expect(page).toHaveURL("/games");
+    await expect(page.getByRole("heading", { name: "Choose your game" })).toBeVisible();
+
+    await page.getByRole("link", { name: "Sudoku" }).click();
+    await expect(page).toHaveURL("/");
+    await expect(page.getByRole("heading", { name: "New game" })).toBeVisible();
   });
 
   /**
