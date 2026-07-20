@@ -16,7 +16,10 @@
 import type {
   AuthenticateRequest,
   BoardResponse,
+  CreateMatchRequest,
   Difficulty,
+  JoinMatchRequest,
+  MatchResponse,
   RegisterRequest,
   RequestPasswordResetRequest,
   ResetPasswordRequest,
@@ -310,4 +313,51 @@ export async function revealHint(
     method: "POST",
     body: { cellIndex } satisfies RevealHintRequest,
   });
+}
+
+/* --------------------------------------------------------------- matches */
+
+/**
+ * Opens a lobby and returns its join code. No board is dealt yet — the pool is only drawn on when
+ * someone actually joins, so an abandoned lobby costs nothing.
+ */
+export async function createMatch(difficulty: Difficulty): Promise<MatchResponse> {
+  return request("/api/v1/matches", {
+    method: "POST",
+    body: { difficulty } satisfies CreateMatchRequest,
+  });
+}
+
+/**
+ * Redeems a join code and starts the race, dealing both players a board from one puzzle.
+ *
+ * Throws `ApiError(404)` for an unknown code, `ApiError(409)` if the lobby is full or the match is
+ * over, and `ApiError(503)` if the board pool is empty at that difficulty — the 503 leaves the
+ * match waiting, so it is worth retrying rather than starting over.
+ */
+export async function joinMatch(joinCode: string): Promise<MatchResponse> {
+  return request("/api/v1/matches/join", {
+    method: "POST",
+    body: { joinCode } satisfies JoinMatchRequest,
+  });
+}
+
+/**
+ * Concedes a race, handing the win to the opponent. Idempotent server-side, so a double tap or a
+ * retry is harmless.
+ */
+export async function forfeitMatch(matchId: number): Promise<MatchResponse> {
+  return request(`/api/v1/matches/${matchId}/forfeit`, { method: "POST" });
+}
+
+/**
+ * Reads a race the caller is playing in. This is the polled endpoint: there is no push channel —
+ * the API sits behind an API Gateway HTTP API, which does not carry WebSockets — and for a race
+ * the shared state is one integer per player, so polling costs less than a socket would.
+ *
+ * Throws `ApiError(404)` for a match that does not exist *or* that the caller is not in; the server
+ * does not distinguish the two.
+ */
+export async function getMatch(matchId: number): Promise<MatchResponse> {
+  return request(`/api/v1/matches/${matchId}`);
 }

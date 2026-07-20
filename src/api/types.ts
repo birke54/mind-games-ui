@@ -40,9 +40,58 @@ export interface SaveBoardProgress {
   elapsedSeconds: number;
 }
 
+/* ---------------------------------------------------------------- multiplayer */
+
+export type MatchStatus = "waiting" | "active" | "finished" | "abandoned";
+
+/** Cells in a grid — the denominator for a player's `correctCells` progress. */
+export const TOTAL_CELLS = 81;
+
+/**
+ * One player's standing in a race.
+ *
+ * `correctCells` is the *whole* of what you learn about your opponent, and deliberately so: their
+ * grid would be most of the solution. It is counted server-side against the solution, so a wrong
+ * digit is not progress, and it can go down when they erase a correct one.
+ */
+export interface MatchPlayer {
+  userId: number;
+  username: string;
+  correctCells: number;
+  finishedAt: string | null;
+}
+
+/**
+ * A race, as one of its two players sees it. This is what the lobby and the board poll.
+ *
+ * `status` drives the flow: "waiting" shows the join code, "active" means `boardId` is populated
+ * and play can start, "finished" names a `winnerUserId`.
+ */
+export interface MatchResponse {
+  id: number;
+  joinCode: string;
+  difficulty: Difficulty;
+  status: MatchStatus;
+  /** This player's board in the race; null while the lobby is still waiting. */
+  boardId: number | null;
+  hostUserId: number;
+  winnerUserId: number | null;
+  players: MatchPlayer[];
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
 /** A hint request. `cellIndex` is a preference — the server falls back to the first empty cell. */
 export interface RevealHintRequest {
   cellIndex: number | null;
+}
+
+export interface CreateMatchRequest {
+  difficulty: Difficulty;
+}
+
+export interface JoinMatchRequest {
+  joinCode: string;
 }
 
 export interface RegisterRequest {
