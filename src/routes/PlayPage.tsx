@@ -5,12 +5,14 @@ import * as api from "../api/client";
 import type { BoardResponse } from "../api/types";
 import { Board } from "../components/Board";
 import { Controls } from "../components/Controls";
+import { MatchProgress } from "../components/MatchProgress";
 import { NumberPad } from "../components/NumberPad";
 import { clearMirror, readMirror, reconcile } from "../game/boardMirror";
 import { gameReducer, looksSolved } from "../game/gameReducer";
 import { formatElapsed } from "../game/sudoku";
 import { useAutosave, type SaveStatus } from "../game/useAutosave";
 import { useGameTimer } from "../game/useGameTimer";
+import { useMatch } from "../game/useMatch";
 import { useKeyboard } from "../game/useKeyboard";
 
 export default function PlayPage() {
@@ -84,7 +86,13 @@ function Game({ board }: { board: BoardResponse }) {
 
   const done = state.status === "completed";
 
-  // A board with no local solution takes its hints from the server. Local edits
+  // A match board follows its race alongside the board itself. The poll is what surfaces the
+  // opponent's progress and, when they finish first, the result — the board's own save cycle only
+  // ever hears about this player.
+  const match = useMatch(board.matchId);
+  const viewer = api.currentUsername();
+
+  // A match board's solution is not on the client, so its hints come from the server. Local edits
   // are flushed first: the server reveals against the board *it* holds, so without the flush the
   // response could be computed from a stale grid and the revealed cell would be ambiguous.
   const hint = useMutation({
@@ -99,6 +107,18 @@ function Game({ board }: { board: BoardResponse }) {
       if (index >= 0) dispatch({ type: "REVEALED", index, digit: Number(revealed.currentState[index]) });
     },
   });
+
+  const forfeit = useMutation({
+    mutationFn: () => api.forfeitMatch(board.matchId as number),
+    onSuccess: (updated) => queryClient.setQueryData(["match", updated.id], updated),
+  });
+
+  // Losing is the one outcome the board itself cannot show: this player's board is still in
+  // progress, so nothing freezes and without this they would play on with no idea it was over.
+  const result = match.data;
+  const lost =
+    result?.status === "finished" &&
+    result.players.some((p) => p.username === viewer && p.userId !== result.winnerUserId);
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-3 py-3">
@@ -160,6 +180,19 @@ function Game({ board }: { board: BoardResponse }) {
             </Overlay>
           )}
 
+          {lost && !done && (
+            <Overlay>
+              <p className="mb-2 text-2xl font-semibold text-slate-200">Opponent finished first</p>
+              <p className="mb-6 text-slate-400">
+                {result?.players.find((p) => p.userId === result.winnerUserId)?.username} won this
+                race.
+              </p>
+              <Link to="/sudoku/multiplayer" className="btn-primary grid place-items-center px-6">
+                Race again
+              </Link>
+            </Overlay>
+          )}
+
           {done && (
             <Overlay>
               <p className="mb-2 text-2xl font-semibold text-emerald-400">Solved</p>
@@ -174,6 +207,14 @@ function Game({ board }: { board: BoardResponse }) {
         </div>
 
         <div className="w-[min(92vw,32rem)] space-y-3 lg:w-64 lg:space-y-4">
+          {match.data && (
+            <MatchProgress
+              match={match.data}
+              viewer={viewer}
+              onForfeit={() => forfeit.mutate()}
+              forfeitPending={forfeit.isPending}
+            />
+          )}
           <Controls
             state={state}
             dispatch={dispatch}
