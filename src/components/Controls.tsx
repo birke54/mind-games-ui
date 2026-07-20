@@ -7,11 +7,19 @@ import type { GameAction, GameState } from "../game/gameReducer";
 export function Controls({
   state,
   dispatch,
+  onHint,
+  hintPending = false,
 }: {
   state: GameState;
   dispatch: (action: GameAction) => void;
+  /** Where a hint comes from. Solo play reads the local solution; a match asks the server. */
+  onHint: () => void;
+  hintPending?: boolean;
 }) {
   const frozen = state.status === "completed";
+  // Checking marks cells that disagree with the solution, which a live match board does not have.
+  // Hints survive — they just come over the network instead.
+  const assisted = state.solution !== null;
   const anyEmpty = state.grid.some((digit, i) => digit === 0 && state.puzzle[i] === "0");
   const anyEntered = state.grid.some((digit, i) => digit !== 0 && state.puzzle[i] === "0");
 
@@ -45,8 +53,8 @@ export function Controls({
       <ControlButton
         label="Hint"
         icon="?"
-        onClick={() => dispatch({ type: "HINT" })}
-        disabled={frozen || !anyEmpty}
+        onClick={onHint}
+        disabled={frozen || hintPending || !anyEmpty}
       />
       <ControlButton
         // A check with nothing entered would mark nothing and look broken, so it stays disabled
@@ -54,7 +62,7 @@ export function Controls({
         label="Check"
         icon="✓"
         onClick={() => dispatch({ type: "CHECK" })}
-        disabled={frozen || !anyEntered}
+        disabled={frozen || !assisted || !anyEntered}
         active={state.checking}
       />
     </div>

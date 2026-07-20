@@ -20,6 +20,7 @@ import type {
   RegisterRequest,
   RequestPasswordResetRequest,
   ResetPasswordRequest,
+  RevealHintRequest,
   SaveBoardProgress,
 } from "./types";
 
@@ -289,4 +290,24 @@ export async function saveProgress(
   progress: SaveBoardProgress,
 ): Promise<BoardResponse> {
   return request(`/api/v1/boards/${boardId}`, { method: "PUT", body: progress });
+}
+
+/**
+ * Asks the server to fill one cell.
+ *
+ * Only needed on a match board, whose solution is withheld — solo play hints locally, for free and
+ * offline. `cellIndex` is a preference, not a demand: a given or already-filled cell falls back to
+ * the first empty one server-side, because a hint that silently did nothing is worse than one that
+ * lands elsewhere.
+ *
+ * Throws `ApiError(409)` if the board is already completed.
+ */
+export async function revealHint(
+  boardId: number,
+  cellIndex: number | null,
+): Promise<BoardResponse> {
+  return request(`/api/v1/boards/${boardId}/hint`, {
+    method: "POST",
+    body: { cellIndex } satisfies RevealHintRequest,
+  });
 }

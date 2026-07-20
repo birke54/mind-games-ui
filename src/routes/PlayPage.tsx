@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useReducer, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import * as api from "../api/client";
@@ -84,6 +84,22 @@ function Game({ board }: { board: BoardResponse }) {
 
   const done = state.status === "completed";
 
+  // A board with no local solution takes its hints from the server. Local edits
+  // are flushed first: the server reveals against the board *it* holds, so without the flush the
+  // response could be computed from a stale grid and the revealed cell would be ambiguous.
+  const hint = useMutation({
+    mutationFn: async () => {
+      flush();
+      return api.revealHint(state.boardId, state.selected);
+    },
+    onSuccess: (revealed) => {
+      const index = revealed.currentState
+        .split("")
+        .findIndex((digit, i) => digit !== "0" && state.grid[i] === 0);
+      if (index >= 0) dispatch({ type: "REVEALED", index, digit: Number(revealed.currentState[index]) });
+    },
+  });
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-3 py-3">
       {conflict && (
@@ -158,7 +174,14 @@ function Game({ board }: { board: BoardResponse }) {
         </div>
 
         <div className="w-[min(92vw,32rem)] space-y-3 lg:w-64 lg:space-y-4">
-          <Controls state={state} dispatch={dispatch} />
+          <Controls
+            state={state}
+            dispatch={dispatch}
+            hintPending={hint.isPending}
+            onHint={() =>
+              state.solution === null ? hint.mutate() : dispatch({ type: "HINT" })
+            }
+          />
           <NumberPad state={state} dispatch={dispatch} />
           <p className="hidden text-xs leading-relaxed text-slate-400 lg:block">
             Arrows or WASD to move · 1–9 to enter · Shift+digit to pencil a note · N for notes mode

@@ -21,6 +21,7 @@ const makeBoard = (
   puzzle: PUZZLE,
   currentState: status === "completed" ? SOLUTION : currentState,
   solution: SOLUTION,
+  matchId: null,
   notes: {},
   elapsedSeconds,
   claimedAt: "2026-07-12T00:00:00Z",

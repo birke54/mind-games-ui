@@ -7,7 +7,7 @@
  */
 
 import type { BoardResponse, BoardStatus } from "../api/types";
-import { CELLS, isSolved, parseGrid, peersOf, serializeGrid } from "./sudoku";
+import { CELLS, isGridFull, isSolved, parseGrid, peersOf, serializeGrid } from "./sudoku";
 
 export type Notes = ReadonlyMap<number, ReadonlySet<number>>;
 
@@ -21,7 +21,15 @@ interface Snapshot {
 export interface GameState {
   boardId: number;
   puzzle: string;
-  solution: string;
+  /**
+   * Null on a match board the player hasn't finished — the server withholds it so a race cannot be
+   * won from a value already in the browser. Everything that reads it has to cope: hints and
+   * checking are unavailable, and completion is predicted from a full grid instead of a matching
+   * one. See {@link looksSolved}.
+   */
+  solution: string | null;
+  /** The race this board belongs to, or null for solo play. */
+  matchId: number | null;
 
   grid: number[];
   notes: Notes;
@@ -67,6 +75,8 @@ export type GameAction =
   | { type: "INPUT_DIGIT"; digit: number; asNote?: boolean }
   | { type: "ERASE" }
   | { type: "HINT" }
+  /** A hint the *server* computed, for a match board that has no local solution to read. */
+  | { type: "REVEALED"; index: number; digit: number }
   | { type: "CHECK" }
   | { type: "TOGGLE_NOTES_MODE" }
   | { type: "SET_PAUSED"; paused: boolean }
@@ -102,6 +112,7 @@ export function initialState(board: BoardResponse): GameState {
     boardId: board.id,
     puzzle: board.puzzle,
     solution: board.solution,
+    matchId: board.matchId,
     grid: parseGrid(board.currentState),
     notes: notesFromWire(board.notes),
     selected: null,
@@ -225,7 +236,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       // Fills the selected cell with the right digit. The solution is already on the client, so
       // this costs nothing and works offline. If the selection is missing or already filled, take
       // the first empty cell — a hint should never be a no-op the player has to puzzle over.
-      if (isFrozen(state)) return state;
+      //
+      // A match board has no solution here, so there is nothing to reveal from: hints in a race
+      // have to come from the server, and until they do the UI hides the control rather than
+      // letting this silently do nothing.
+      if (isFrozen(state) || state.solution === null) return state;
 
       const eligible = (i: number) => !isGivenAt(state, i) && state.grid[i] === 0;
       const target =
@@ -242,8 +257,28 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...filled, hintsUsed: state.hintsUsed + 1 };
     }
 
+    case "REVEALED": {
+      // The server already persisted this cell. Applying it as an ordinary edit — rather than
+      // rehydrating from the response — is what keeps the player's undo history and any edits they
+      // made while the request was in flight. The re-save it provokes is a harmless no-op, since
+      // saves are whole-state and idempotent.
+      if (isFrozen(state)) return state;
+
+      const filled = gameReducer(
+        { ...state, selected: action.index, notesMode: false },
+        { type: "INPUT_DIGIT", digit: action.digit },
+      );
+      return { ...filled, hintsUsed: state.hintsUsed + 1 };
+    }
+
     case "CHECK":
-      return isFrozen(state) ? state : { ...state, checking: !state.checking };
+      // Checking marks cells that disagree with the solution, which a match board does not have.
+      // Dropping it in a race is deliberate rather than merely forced: free error-detection is
+      // most of the difficulty of a Sudoku, and handing it to both players over the network would
+      // make the race a test of connection speed.
+      return isFrozen(state) || state.solution === null
+        ? state
+        : { ...state, checking: !state.checking };
 
     case "TOGGLE_NOTES_MODE":
       return { ...state, notesMode: !state.notesMode };
@@ -308,7 +343,16 @@ export const hasUnsavedEdits = (s: GameState): boolean => s.revision !== s.saved
 export const hasUnsavedChanges = (s: GameState): boolean =>
   hasUnsavedEdits(s) || s.elapsedSeconds !== s.savedElapsedSeconds;
 
-/** Whether the grid now matches the solution. The client predicts completion; the server rules. */
-export const looksSolved = (s: GameState): boolean => isSolved(s.grid, s.solution);
+/**
+ * Whether this grid is worth sending as a completing save. The client predicts; the server rules.
+ *
+ * With a solution in hand that prediction is exact. A match board has none, so it falls back to
+ * "every cell is filled" — which is the only moment completion is *possible*, and so is the right
+ * trigger for the immediate flush that decides a race. It over-fires on a full-but-wrong grid; the
+ * cost is one save that comes back still in progress, which is the same save the debounce would
+ * have sent anyway.
+ */
+export const looksSolved = (s: GameState): boolean =>
+  s.solution === null ? isGridFull(s.grid) : isSolved(s.grid, s.solution);
 
 export const currentStateString = (s: GameState): string => serializeGrid(s.grid);

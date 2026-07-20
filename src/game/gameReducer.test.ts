@@ -24,6 +24,7 @@ const board: BoardResponse = {
   puzzle: PUZZLE,
   currentState: PUZZLE,
   solution: SOLUTION,
+  matchId: null,
   notes: {},
   elapsedSeconds: 0,
   claimedAt: "2026-07-12T00:00:00Z",

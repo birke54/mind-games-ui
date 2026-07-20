@@ -19,3 +19,6 @@ blob-report/
 
 # Claude Code
 CLAUDE.md
+
+# AWS RDS CA bundle, pulled down for backend work — not part of the frontend build.
+global-bundle.pem
