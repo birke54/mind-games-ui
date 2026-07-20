@@ -81,6 +81,15 @@ export function isSolved(grid: readonly number[], solution: string): boolean {
   return serializeGrid(grid) === solution;
 }
 
+/**
+ * Whether every cell has a digit in it. Says nothing about whether they are the *right* digits —
+ * it is the completion test for a match board, where the solution is withheld and a full grid is
+ * the only signal the client has that the board might be done.
+ */
+export function isGridFull(grid: readonly number[]): boolean {
+  return grid.every((digit) => digit !== 0);
+}
+
 /** How many of each digit are placed — used to grey out a digit on the pad once all 9 are down. */
 export function digitCounts(grid: readonly number[]): number[] {
   const counts = new Array<number>(10).fill(0);

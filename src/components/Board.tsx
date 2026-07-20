@@ -26,7 +26,13 @@ export function Board({
   // Only computed when the player has actually asked. Otherwise the app would be quietly holding
   // the answer key up against their work the whole time.
   const mistaken = useMemo(
-    () => (state.checking ? mistakes(state.grid, state.solution) : new Set<number>()),
+    // No solution means a live match board, where checking is unavailable — so this never marks
+    // anything. The guard is what makes that unreachability explicit rather than a crash waiting
+    // on a stray CHECK.
+    () =>
+      state.checking && state.solution !== null
+        ? mistakes(state.grid, state.solution)
+        : new Set<number>(),
     [state.checking, state.grid, state.solution],
   );
 

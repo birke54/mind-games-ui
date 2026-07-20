@@ -6,11 +6,15 @@ export type BoardStatus = "in_progress" | "completed";
 export const DIFFICULTIES: readonly Difficulty[] = ["easy", "moderate", "hard"];
 
 /**
- * A board belonging to the player. The three grid strings are 81 chars, row-major
+ * A board belonging to the player. The grid strings are 81 chars, row-major
  * (index = row * 9 + col), with '0' for an empty cell.
  *
  * `puzzle` is the immutable deal, so cell i is a given iff `puzzle[i] !== "0"`.
- * `solution` really is sent to the client — validation and hints are therefore local.
+ *
+ * `solution` is sent for solo boards — validation and hints are therefore local — but is **null on
+ * a match board** until the player finishes it. In a race, a solution sitting in the browser is a
+ * win one paste away, so the server withholds it and the client has to do without: no live conflict
+ * marking, and completion is predicted from a full grid rather than a matching one.
  */
 export interface BoardResponse {
   id: number;
@@ -18,7 +22,9 @@ export interface BoardResponse {
   status: BoardStatus;
   puzzle: string;
   currentState: string;
-  solution: string;
+  solution: string | null;
+  /** The race this board belongs to, or null for ordinary solo play. */
+  matchId: number | null;
   /** Pencil marks keyed by row-major cell index ("0".."80"); cells without notes are absent. */
   notes: Record<string, number[]>;
   elapsedSeconds: number;
@@ -32,6 +38,11 @@ export interface SaveBoardProgress {
   currentState: string;
   notes: Record<string, number[]>;
   elapsedSeconds: number;
+}
+
+/** A hint request. `cellIndex` is a preference — the server falls back to the first empty cell. */
+export interface RevealHintRequest {
+  cellIndex: number | null;
 }
 
 export interface RegisterRequest {
