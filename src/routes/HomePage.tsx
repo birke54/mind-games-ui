@@ -32,10 +32,10 @@ export default function HomePage() {
   return (
     <main className="mx-auto min-h-dvh w-full max-w-2xl px-4 py-8">
       <Link
-        to="/games"
+        to="/sudoku"
         className="mb-4 inline-flex min-h-12 items-center text-sm text-slate-400 hover:text-slate-200"
       >
-        ← Games
+        ← Modes
       </Link>
 
       <header className="mb-10 flex items-baseline justify-between gap-3">

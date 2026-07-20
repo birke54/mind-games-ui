@@ -6,10 +6,12 @@ import ForgotPasswordPage from "./routes/ForgotPasswordPage";
 import GamesPage from "./routes/GamesPage";
 import HomePage from "./routes/HomePage";
 import LoginPage from "./routes/LoginPage";
+import MultiplayerPage from "./routes/MultiplayerPage";
 import PlayPage from "./routes/PlayPage";
 import RegisterPage from "./routes/RegisterPage";
 import ResetPasswordPage from "./routes/ResetPasswordPage";
 import StatsPage from "./routes/StatsPage";
+import SudokuModePage from "./routes/SudokuModePage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -43,6 +45,22 @@ export default function App() {
               element={
                 <RequireAuth>
                   <GamesPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/sudoku"
+              element={
+                <RequireAuth>
+                  <SudokuModePage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/sudoku/multiplayer"
+              element={
+                <RequireAuth>
+                  <MultiplayerPage />
                 </RequireAuth>
               }
             />

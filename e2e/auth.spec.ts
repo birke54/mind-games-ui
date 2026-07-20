@@ -24,10 +24,12 @@ test.describe("authentication", () => {
     await expectSignedIn(page);
   });
 
-  // The post-login landing is the game hub, not a game. Its Sudoku tile is the way into Sudoku;
-  // the second tile is a placeholder for games still to come. Enter the way a real visitor does —
-  // at the root, which bounces to /login — because the root bounce must NOT pin login back to "/".
-  test("signing in lands on the game hub, whose Sudoku tile opens the game", async ({ page }) => {
+  // The post-login landing is the game hub, not a game. Its Sudoku tile opens the mode picker, and
+  // single player is the way into the game itself. Enter the way a real visitor does — at the root,
+  // which bounces to /login — because the root bounce must NOT pin login back to "/".
+  test("signing in lands on the game hub, which leads through modes into the game", async ({
+    page,
+  }) => {
     const username = await register(page); // lands on /games
     await page.getByRole("button", { name: "Sign out" }).click();
     await expect(page).toHaveURL(/\/login$/);
@@ -42,10 +44,16 @@ test.describe("authentication", () => {
     await expect(page.getByRole("heading", { name: "Choose your game" })).toBeVisible();
 
     await page.getByRole("link", { name: "Sudoku" }).click();
+    await expect(page).toHaveURL("/sudoku");
+    await expect(page.getByRole("heading", { name: "Choose a mode" })).toBeVisible();
+
+    await page.getByRole("link", { name: "Single player" }).click();
     await expect(page).toHaveURL("/");
     await expect(page.getByRole("heading", { name: "New game" })).toBeVisible();
 
-    // ...and back out to the games list.
+    // ...and back out through the mode picker to the games list.
+    await page.getByRole("link", { name: "Modes" }).click();
+    await expect(page).toHaveURL("/sudoku");
     await page.getByRole("link", { name: "Games" }).click();
     await expect(page).toHaveURL("/games");
     await expect(page.getByRole("heading", { name: "Choose your game" })).toBeVisible();
@@ -69,6 +77,25 @@ test.describe("authentication", () => {
 
     await expectSignedIn(page);
     expect(refreshes).toHaveLength(1); // one refresh, not a storm
+  });
+
+  /**
+   * A deep link to a route that is not an S3 object. The mode picker is the first client route
+   * added since the service worker's precache and CloudFront's 403/404 → /index.html rewrite were
+   * set up, so it is the case where a stale navigation fallback would surface: the boot has to come
+   * from the SPA shell, not a 404 body, and then survive the auth bootstrap.
+   */
+  test("a deep link to /sudoku boots the router and keeps the session", async ({ page }) => {
+    await register(page);
+
+    await page.goto("/sudoku");
+    await expect(page.getByRole("heading", { name: "Choose a mode" })).toBeVisible();
+
+    await page.reload();
+
+    await expect(page).toHaveURL("/sudoku");
+    await expect(page.getByRole("heading", { name: "Choose a mode" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Single player" })).toBeVisible();
   });
 
   // The only things we persist are the board mirror (for offline play) and a boolean "this browser

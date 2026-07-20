@@ -21,6 +21,40 @@ export function SudokuIcon({ size = "sm" }: { size?: Size }) {
   );
 }
 
+export function SinglePlayerIcon({ size = "sm" }: { size?: Size }) {
+  const box = size === "lg" ? "h-[122px] w-[122px]" : "h-[74px] w-[74px]";
+  return (
+    <div
+      aria-hidden
+      className={`grid ${box} place-items-center rounded-md border border-sky-500/40 bg-sky-500/20`}
+    >
+      <Player className="w-1/2 text-sky-300" />
+    </div>
+  );
+}
+
+export function MultiplayerIcon({ size = "sm" }: { size?: Size }) {
+  const box = size === "lg" ? "h-[122px] w-[122px]" : "h-[74px] w-[74px]";
+  return (
+    <div
+      aria-hidden
+      className={`flex ${box} items-center justify-center gap-1 rounded-md border border-slate-600 bg-slate-800`}
+    >
+      <Player className="w-2/5 text-slate-400" />
+      <Player className="w-2/5 text-slate-500" />
+    </div>
+  );
+}
+
+function Player({ className }: { className: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <circle cx="12" cy="7" r="4" />
+      <path d="M4 21a8 8 0 0 1 16 0z" />
+    </svg>
+  );
+}
+
 export function MoreGamesIcon({ size = "sm" }: { size?: Size }) {
   const box = size === "lg" ? "h-[122px] w-[122px] text-4xl" : "h-[74px] w-[74px] text-2xl";
   return (

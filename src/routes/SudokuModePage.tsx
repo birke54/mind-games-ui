@@ -1,19 +1,26 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
-import { MoreGamesIcon, SudokuIcon } from "../components/GameIcons";
+import { MultiplayerIcon, SinglePlayerIcon } from "../components/GameIcons";
 
 /**
- * The post-login landing: a game picker. Sudoku is the only game today, and its tile opens the
- * mode picker at "/sudoku"; the second tile is a placeholder for what's coming.
+ * The mode picker that sits between the game hub and Sudoku itself. Single player is the existing
+ * game at "/"; multiplayer is a placeholder until the backend can pair players.
  */
-export default function GamesPage() {
+export default function SudokuModePage() {
   const { username, logout } = useAuth();
 
   return (
     <main className="mx-auto min-h-dvh w-full max-w-2xl px-4 py-8">
+      <Link
+        to="/games"
+        className="mb-4 inline-flex min-h-12 items-center text-sm text-slate-400 hover:text-slate-200"
+      >
+        ← Games
+      </Link>
+
       <header className="mb-12 flex items-baseline justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight whitespace-nowrap sm:text-2xl">
-          Cortex Clash
+          Sudoku
         </h1>
         <nav className="flex items-baseline gap-4 text-sm whitespace-nowrap text-slate-400">
           <span className="hidden text-slate-400 sm:inline">{username}</span>
@@ -24,29 +31,29 @@ export default function GamesPage() {
       </header>
 
       <h2 className="mb-4 text-sm font-medium tracking-wide text-slate-400 uppercase">
-        Choose your game
+        Choose a mode
       </h2>
 
       <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <li>
           <Link
-            to="/sudoku"
+            to="/"
             className="flex h-full flex-col items-center gap-4 rounded-2xl border border-slate-700 bg-slate-800/60 p-8 text-center hover:border-sky-500 hover:bg-slate-800"
           >
-            <SudokuIcon size="lg" />
-            <span className="text-lg font-semibold text-slate-100">Sudoku</span>
-            <span className="text-sm text-slate-400">Classic number puzzles</span>
+            <SinglePlayerIcon size="lg" />
+            <span className="text-lg font-semibold text-slate-100">Single player</span>
+            <span className="text-sm text-slate-400">Solve at your own pace</span>
           </Link>
         </li>
         <li>
-          <div
-            aria-disabled
-            className="flex h-full flex-col items-center gap-4 rounded-2xl border border-dashed border-slate-700 bg-slate-800/30 p-8 text-center"
+          <Link
+            to="/sudoku/multiplayer"
+            className="flex h-full flex-col items-center gap-4 rounded-2xl border border-dashed border-slate-700 bg-slate-800/30 p-8 text-center hover:border-slate-500"
           >
-            <MoreGamesIcon size="lg" />
-            <span className="text-lg font-semibold text-slate-100">More games</span>
+            <MultiplayerIcon size="lg" />
+            <span className="text-lg font-semibold text-slate-100">Multiplayer</span>
             <span className="text-sm text-slate-400">Coming soon</span>
-          </div>
+          </Link>
         </li>
       </ul>
     </main>
