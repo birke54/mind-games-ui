@@ -68,6 +68,25 @@ test.describe("accessibility", () => {
     expect(violations).toEqual([]);
   });
 
+  test("the sudoku mode picker", async ({ page }) => {
+    await register(page);
+    await page.getByRole("link", { name: "Sudoku" }).click();
+    await expect(page.getByRole("heading", { name: "Choose a mode" })).toBeVisible();
+
+    const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+    expect(violations).toEqual([]);
+  });
+
+  test("the multiplayer placeholder", async ({ page }) => {
+    await register(page);
+    await page.getByRole("link", { name: "Sudoku" }).click();
+    await page.getByRole("link", { name: "Multiplayer" }).click();
+    await expect(page.getByRole("heading", { name: "Sudoku multiplayer" })).toBeVisible();
+
+    const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+    expect(violations).toEqual([]);
+  });
+
   test("the home screen", async ({ page }) => {
     await signUp(page);
 
