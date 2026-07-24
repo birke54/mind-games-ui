@@ -115,10 +115,49 @@ function Game({ board }: { board: BoardResponse }) {
 
   // Losing is the one outcome the board itself cannot show: this player's board is still in
   // progress, so nothing freezes and without this they would play on with no idea it was over.
+  //
+  // Neither outcome is tied to `done`. A player can lose a race and go on to finish their board,
+  // and a forfeit hands someone the win while their own board is still in progress — so a race is
+  // over when the *match* says so, whatever this board is doing.
   const result = match.data;
   const lost =
     result?.status === "finished" &&
     result.players.some((p) => p.username === viewer && p.userId !== result.winnerUserId);
+  const won =
+    result?.status === "finished" &&
+    result.players.some((p) => p.username === viewer && p.userId === result.winnerUserId);
+
+  /**
+   * Which overlay is on screen — one value rather than a guard per overlay, because they are all
+   * `absolute inset-0` in the same container with no z-index between them. Two truthy guards would
+   * stack two backdrops and let the later sibling silently win the screen.
+   *
+   * A match board never shows "Solved" *while the race is known*: the result is the outcome that
+   * matters, and the board finishing is only half of it. A winner is `done` up to one poll before
+   * they are `won` (useMatch polls at 2s; the completing save is immediate), and that beat shows
+   * nothing rather than flashing a solo "New game" at someone who just won a race.
+   *
+   * A race that will never report is a different thing entirely, and must not be read as "still
+   * running": either there is no match data at all — offline, a 404, a failed poll — or it ended
+   * abandoned, with no winner to name. A board solved there still deserves to say so, or finishing
+   * one offline leaves the player staring at a frozen grid with no outcome at all.
+   */
+  const isMatch = board.matchId !== null;
+  const noResultComing = !result || result.status === "abandoned";
+  const overlay =
+    state.paused && !done
+      ? "paused"
+      : isMatch
+        ? won
+          ? "won"
+          : lost
+            ? "lost"
+            : noResultComing && done
+              ? "solved"
+              : null
+        : done
+          ? "solved"
+          : null;
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-3 py-3">
@@ -165,7 +204,7 @@ function Game({ board }: { board: BoardResponse }) {
         <div className="relative">
           <Board state={state} dispatch={dispatch} />
 
-          {state.paused && !done && (
+          {overlay === "paused" && (
             // Pausing must hide the board, or it becomes a way to stop the clock and keep
             // studying the grid.
             <Overlay>
@@ -180,7 +219,7 @@ function Game({ board }: { board: BoardResponse }) {
             </Overlay>
           )}
 
-          {lost && !done && (
+          {overlay === "lost" && (
             <Overlay>
               <p className="mb-2 text-2xl font-semibold text-slate-200">Opponent finished first</p>
               <p className="mb-6 text-slate-400">
@@ -193,7 +232,24 @@ function Game({ board }: { board: BoardResponse }) {
             </Overlay>
           )}
 
-          {done && (
+          {overlay === "won" && (
+            <Overlay>
+              {/* Not "finished first": a forfeit is a win with nothing finished at all. */}
+              <p className="mb-2 text-2xl font-semibold text-emerald-400">You won this race</p>
+              <p className="mb-1 text-slate-300">
+                {result?.players.find((p) => p.userId !== result.winnerUserId)?.username} lost this
+                race.
+              </p>
+              <p className="mb-6 text-slate-400">
+                {board.difficulty} · {formatElapsed(state.elapsedSeconds)}
+              </p>
+              <Link to="/sudoku/multiplayer" className="btn-primary grid place-items-center px-6">
+                Race again
+              </Link>
+            </Overlay>
+          )}
+
+          {overlay === "solved" && (
             <Overlay>
               <p className="mb-2 text-2xl font-semibold text-emerald-400">Solved</p>
               <p className="mb-6 text-slate-300">
