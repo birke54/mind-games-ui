@@ -4,7 +4,7 @@ import { MultiplayerIcon, SinglePlayerIcon } from "../components/GameIcons";
 
 /**
  * The mode picker that sits between the game hub and Sudoku itself. Single player is the existing
- * game at "/"; multiplayer is a placeholder until the backend can pair players.
+ * game at "/"; multiplayer is the two-player race lobby.
  */
 export default function SudokuModePage() {
   const { username, logout } = useAuth();
@@ -48,11 +48,11 @@ export default function SudokuModePage() {
         <li>
           <Link
             to="/sudoku/multiplayer"
-            className="flex h-full flex-col items-center gap-4 rounded-2xl border border-dashed border-slate-700 bg-slate-800/30 p-8 text-center hover:border-slate-500"
+            className="flex h-full flex-col items-center gap-4 rounded-2xl border border-slate-700 bg-slate-800/60 p-8 text-center hover:border-sky-500 hover:bg-slate-800"
           >
             <MultiplayerIcon size="lg" />
-            <span className="text-lg font-semibold text-slate-100">Multiplayer</span>
-            <span className="text-sm text-slate-400">Coming soon</span>
+            <span className="text-lg font-semibold text-slate-100">2-Player H2H</span>
+            <span className="text-sm text-slate-400">Race against your friends</span>
           </Link>
         </li>
       </ul>

@@ -77,10 +77,10 @@ test.describe("accessibility", () => {
     expect(violations).toEqual([]);
   });
 
-  test("the multiplayer placeholder", async ({ page }) => {
+  test("the multiplayer lobby", async ({ page }) => {
     await register(page);
     await page.getByRole("link", { name: "Sudoku" }).click();
-    await page.getByRole("link", { name: "Multiplayer" }).click();
+    await page.getByRole("link", { name: "2-Player H2H" }).click();
     await expect(page.getByRole("heading", { name: "Sudoku multiplayer" })).toBeVisible();
 
     const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
