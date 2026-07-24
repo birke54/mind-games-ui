@@ -97,6 +97,37 @@ export async function waitForServiceWorker(page: Page): Promise<void> {
 export const emptyCells = (board: Board): number[] =>
   [...board.puzzle].flatMap((c, i) => (c === "0" ? [i] : []));
 
+/** Whether two cells share a row, a column or a 3x3 box — i.e. whether they are peers. */
+const sharesUnit = (a: number, b: number): boolean => {
+  const rowA = Math.floor(a / 9);
+  const rowB = Math.floor(b / 9);
+  const colA = a % 9;
+  const colB = b % 9;
+  return (
+    rowA === rowB ||
+    colA === colB ||
+    (Math.floor(rowA / 3) === Math.floor(rowB / 3) && Math.floor(colA / 3) === Math.floor(colB / 3))
+  );
+};
+
+/**
+ * An empty cell, paired with a digit already sitting among its peers.
+ *
+ * Conflict marking is *rule* validation — a digit repeated in a row, column or box — which is not
+ * the same thing as a digit that disagrees with the solution. A merely-wrong digit conflicts only
+ * when it happens to collide with a peer, and whether it does is a property of the deal. A test
+ * built on one therefore passes or fails by luck of the board it was handed. This returns an entry
+ * that has to collide, on any board.
+ */
+export function conflictingEntry(board: Board): { index: number; digit: string } {
+  for (const index of emptyCells(board)) {
+    // Only givens are considered, so the collision holds no matter what the test typed earlier.
+    const peer = [...board.puzzle].findIndex((c, j) => c !== "0" && sharesUnit(index, j));
+    if (peer >= 0) return { index, digit: board.puzzle[peer] };
+  }
+  throw new Error("no empty cell shares a unit with a given — not a real Sudoku deal");
+}
+
 /* ------------------------------------------------------------------ mail */
 
 /**

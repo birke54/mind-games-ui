@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { cell, claimBoard, emptyCells, signUp } from "./helpers";
+import { cell, claimBoard, conflictingEntry, emptyCells, signUp } from "./helpers";
 
 test.describe("playing a board", () => {
   test("enter a digit, undo it, pencil a note", async ({ page }) => {
@@ -20,16 +20,17 @@ test.describe("playing a board", () => {
     await expect(cell(page, first)).toHaveAttribute("aria-label", /notes 5/);
   });
 
+  // A conflict is a digit repeated among a cell's peers, not a digit that disagrees with the
+  // solution — so the entry has to be derived from the deal rather than from the answer key.
   test("a duplicate digit is flagged as a conflict", async ({ page }) => {
     await signUp(page);
     const board = await claimBoard(page);
-    const [first] = emptyCells(board);
-    const wrong = board.solution[first] === "9" ? "8" : "9";
+    const { index, digit } = conflictingEntry(board);
 
-    await cell(page, first).click();
-    await page.keyboard.press(wrong);
+    await cell(page, index).click();
+    await page.keyboard.press(digit);
 
-    await expect(cell(page, first)).toHaveAttribute("aria-label", /conflict/);
+    await expect(cell(page, index)).toHaveAttribute("aria-label", /conflict/);
   });
 
   /**
