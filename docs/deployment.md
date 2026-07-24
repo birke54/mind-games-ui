@@ -14,6 +14,20 @@ viewer ──▶ CloudFront ──┤
 The `/api/*` behavior already exists — the backend repo's `docs/aws-deployment.md` §13 sets it up.
 What follows is only the **default behavior**, which serves this app.
 
+## When a deploy runs
+
+Not on merge to main. A merge starts `e2e.yml`, and `deploy.yml` runs only if that suite passes,
+against the exact commit it tested (`workflow_run.head_sha`) — so nothing reaches CloudFront that the
+end-to-end suite has not exercised against a real backend. A red or cancelled e2e run deploys
+nothing.
+
+Two consequences worth knowing before you go looking for a missing deploy:
+
+- GitHub reads `deploy.yml` from **main**, not from the commit under test. Changing the trigger on a
+  branch does nothing until it merges.
+- `workflow_dispatch` still deploys whatever ref you dispatch, with no e2e gate. That is the escape
+  hatch when the suite is broken for reasons the deploy does not depend on.
+
 ---
 
 ## 1. The bucket

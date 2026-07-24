@@ -1,7 +1,19 @@
 name: Build and deploy to S3/CloudFront
 
+# Deploying is downstream of the e2e suite, not of the push: nothing reaches CloudFront until
+# End-to-end has gone green on that exact commit. `workflow_run` fires on *completion*, whatever the
+# outcome, so the conclusion is what the job gates on below — the trigger alone is not the gate.
+#
+# Two things about workflow_run that are easy to get wrong, and silent when you do:
+#   - GitHub reads this file from the default branch, not from the commit under test, so edits here
+#     only take effect once they are on main.
+#   - The run's own ref is main's tip, not the commit e2e tested. Everything below therefore works
+#     from `workflow_run.head_sha`; checking out the default ref would deploy a build the e2e suite
+#     never saw.
 on:
-  push:
+  workflow_run:
+    workflows: [ "End-to-end" ]
+    types: [ completed ]
     branches: [ main ]
   workflow_dispatch:         # allow manual runs
 
@@ -25,8 +37,17 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # A failed, cancelled or skipped e2e run still fires `completed`. Only success deploys; a manual
+    # dispatch is the human override.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The commit e2e actually tested. Empty on a manual dispatch, where checkout's default
+          # (the dispatched ref) is what we want.
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - uses: actions/setup-node@v4
         with:
@@ -35,8 +56,8 @@ jobs:
 
       - run: npm ci
 
-      # The unit tests need nothing but Node. The e2e suite needs a live backend, so it is not
-      # run here — see README for how to run it against a local API.
+      # The e2e suite already passed on this commit — that is the trigger. These are the unit tests,
+      # kept because they are seconds and because a manual dispatch has no upstream run behind it.
       - run: npm run test
       - run: npm run build
 
