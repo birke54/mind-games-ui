@@ -6,13 +6,10 @@ name: End-to-end
 # README.md says to configure it locally.
 #
 # Not on every pull request. It boots a JVM, migrates a schema and generates Sudoku boards before a
-# single test runs, which is minutes of wall clock that PR feedback should not wait on. Nightly, on
-# merge to main, and on demand.
+# single test runs. Merge to main, and on demand.
 on:
   push:
     branches: [ main ]
-  schedule:
-    - cron: "0 7 * * *"        # 07:00 UTC, nightly
   workflow_dispatch:
 
 # Never two at once: the suite runs with workers:1 against one board pool, and a second run would
@@ -37,7 +34,7 @@ env:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
