@@ -124,18 +124,36 @@ export const EMAIL_MAX_LENGTH = 50;
  * the same rule there, so both forms here enforce the same rule — a password you may register with
  * is a password you may reset to.
  */
-export const PASSWORD_MIN_LENGTH = 10;
+export const PASSWORD_MIN_LENGTH = 8;
 
 /**
  * Maximum password length, **in bytes of UTF-8**, from `PasswordPolicy.MAX_LENGTH_BYTES`.
  *
- * Not characters: BCrypt silently truncates at 72 bytes, so the backend counts bytes and rejects
- * rather than quietly ignoring the tail. A 40-character password of emoji is over the limit, which
- * is why this cannot be an `maxLength` attribute on the input — see {@link passwordByteLength}.
+ * Standard alphanumeric/basic symbols UTF-8 are 1-byte, so effectively this will limit
+ * passwords to 30 characters.
+ * TODO: Presently, we allow accented letters (2 bytes) and emojis (3-4 bytes) to be
+ * TODO: part of the password. We will remove the ability to use these larger characters
+ * TODO: in a future commit.
  */
-export const PASSWORD_MAX_LENGTH_BYTES = 72;
+export const PASSWORD_MAX_LENGTH_BYTES = 30;
 
 /** The length the backend will measure this password at. */
 export function passwordByteLength(password: string): number {
   return new TextEncoder().encode(password).length;
 }
+
+/**
+ * The character set `PasswordPolicy` accepts: ASCII letters, digits and basic punctuation. Every
+ * one of them is a single UTF-8 byte, which is what lets the forms describe the byte maximum above
+ * as a character count.
+ */
+const DISALLOWED_PASSWORD_CHARACTER = /[^a-zA-Z0-9!@#$%^&*()_+\-=[\]{};':",./<>?]/;
+
+/** Whether every character is one the backend will accept. */
+export function hasAllowedPasswordCharacters(password: string): boolean {
+  return !DISALLOWED_PASSWORD_CHARACTER.test(password);
+}
+
+/** Shown for a password carrying characters the backend refuses. */
+export const PASSWORD_CHARACTER_ERROR =
+  "Only alphanumeric characters and basic punctuation are allowed.";

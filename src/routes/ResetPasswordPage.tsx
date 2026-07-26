@@ -1,8 +1,14 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import * as api from "../api/client";
 import { ApiError } from "../api/client";
-import { PASSWORD_MAX_LENGTH_BYTES, PASSWORD_MIN_LENGTH, passwordByteLength } from "../api/types";
+import {
+  PASSWORD_CHARACTER_ERROR,
+  PASSWORD_MAX_LENGTH_BYTES,
+  PASSWORD_MIN_LENGTH,
+  hasAllowedPasswordCharacters,
+  passwordByteLength,
+} from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
 
 export default function ResetPasswordPage() {
@@ -18,6 +24,12 @@ export default function ResetPasswordPage() {
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  function handlePasswordInput(event: ChangeEvent<HTMLInputElement>) {
+    const value = event.target.value;
+    setPassword(value);
+    setError(hasAllowedPasswordCharacters(value) ? null : PASSWORD_CHARACTER_ERROR);
+  }
 
   /*
    * Strip the token from the address bar immediately.
@@ -70,7 +82,13 @@ export default function ResetPasswordPage() {
       return;
     }
     if (passwordByteLength(password) > PASSWORD_MAX_LENGTH_BYTES) {
-      setError(`Password must be at most ${PASSWORD_MAX_LENGTH_BYTES} bytes.`);
+      setError(`Password must be at most ${PASSWORD_MAX_LENGTH_BYTES} characters.`);
+      return;
+    }
+    // Re-checked here and not only while typing: the clear above wipes the inline warning, so
+    // without this a pasted password of refused characters would burn the token on a certain 400.
+    if (!hasAllowedPasswordCharacters(password)) {
+      setError(PASSWORD_CHARACTER_ERROR);
       return;
     }
 
@@ -115,7 +133,7 @@ export default function ResetPasswordPage() {
           className="field"
           type="password"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={handlePasswordInput}
           placeholder="New password"
           autoComplete="new-password"
           aria-label="New password"

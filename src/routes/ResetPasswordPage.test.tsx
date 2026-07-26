@@ -126,7 +126,30 @@ describe("ResetPasswordPage", () => {
 
     await fillAndSubmit("short");
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/at least 10 characters/i);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/at least 8 characters/i);
+    expect(api.resetPassword).not.toHaveBeenCalled();
+  });
+
+  it("rejects a password above the policy maximum without spending the token", async () => {
+    landOn("?token=raw-secret-token");
+    renderPage();
+
+    await fillAndSubmit("a".repeat(31));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/at most 30 characters/i);
+    expect(api.resetPassword).not.toHaveBeenCalled();
+  });
+
+  // The character rule has to survive submit, not just typing: onSubmit clears the inline warning
+  // before it validates, so a password that never passed through the keystroke handler — pasted,
+  // or autofilled — would otherwise reach a server certain to refuse it.
+  it("rejects characters outside the policy set without spending the token", async () => {
+    landOn("?token=raw-secret-token");
+    renderPage();
+
+    await fillAndSubmit("café-au-lait-password");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/alphanumeric characters/i);
     expect(api.resetPassword).not.toHaveBeenCalled();
   });
 
