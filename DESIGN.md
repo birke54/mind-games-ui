@@ -28,11 +28,12 @@ is nothing else to call.
 | GET | `/api/v1/boards` | bearer | — | `200 BoardResponse[]` (newest activity first) | — |
 | PUT | `/api/v1/boards/{id}` | bearer | `{currentState, notes, elapsedSeconds}` | `200 BoardResponse` | `404` not yours, `409` already completed |
 
-The password policy (`PasswordPolicy`) is **≥ 10 characters and ≤ 72 *bytes* of UTF-8** — bytes, not
-characters, because BCrypt silently truncates at 72 and the backend would rather reject than quietly
-ignore the tail. Register and reset are judged by the same rule, so both forms enforce the same rule
-(`PASSWORD_MIN_LENGTH` / `PASSWORD_MAX_LENGTH_BYTES` in `api/types.ts`). The byte limit is why the
-password field cannot simply carry a `maxLength` attribute.
+The password policy (`PasswordPolicy`) is **≥ 8 characters and ≤ 30 *bytes* of UTF-8**. The maximum
+is still counted in bytes, but the backend now restricts passwords to 1-byte characters, so 30 bytes
+is 30 characters and the forms say "characters". Register and reset are judged by the same rule, so
+both forms enforce the same rule (`PASSWORD_MIN_LENGTH` / `PASSWORD_MAX_LENGTH_BYTES` in
+`api/types.ts`). The byte limit is why the password field cannot simply carry a `maxLength`
+attribute.
 
 `BoardResponse`:
 
@@ -401,7 +402,7 @@ completed elsewhere — treat it as success and freeze. A board arriving from `/
 | Route | Screen | Auth | Notes |
 |---|---|---|---|
 | `/login` | Login | public | The server strips the reason from a `401` (§8, item 0b), so the copy is ours — and a locked-out account (`SECURITY_LOCKOUT_THRESHOLD`) is, unhappily, indistinguishable from a wrong password. Handle `429`: API Gateway throttles auth to 5 rps and register to **1 rps / burst 3**. |
-| `/register` | Register | public | Mirror the server's validation: username ≤ 25, email ≤ 50 and format-checked, password ≥ 10 chars and ≤ 72 UTF-8 bytes. `409` → "username or email already taken". |
+| `/register` | Register | public | Mirror the server's validation: username ≤ 25, email ≤ 50 and format-checked, password ≥ 8 chars and ≤ 30 UTF-8 bytes. `409` → "username or email already taken". |
 | `/forgot-password` | Forgot password | public | Email → `POST /request_password_reset`. Renders one neutral confirmation no matter what comes back (constraint 8) — it must not become an account-enumeration oracle. |
 | `/reset-password?token=` | Reset password | public | Redeems the token from the emailed link. The link deep-links straight in, which works because CloudFront already maps `403`/`404` → `/index.html` (`docs/deployment.md` §2) — no infrastructure change. The raw token stays in the URL and is never persisted. Success does **not** sign you in: it sends you to `/login`, because a reset proves control of an inbox, not intent to start a session. |
 | `/games` | Game hub | guarded | The post-login landing (login and register send you here, unless a guarded deep link bounced you through `/login`, in which case you return there). A game picker: the Sudoku tile → `/`; a second tile is a placeholder for games still to come. No API calls of its own. |

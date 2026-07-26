@@ -1,12 +1,14 @@
-import { useState, type FormEvent } from "react";
+import { useState, type ChangeEvent, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import * as api from "../api/client";
 import { ApiError } from "../api/client";
 import {
   EMAIL_MAX_LENGTH,
+  PASSWORD_CHARACTER_ERROR,
   PASSWORD_MAX_LENGTH_BYTES,
   PASSWORD_MIN_LENGTH,
   USERNAME_MAX_LENGTH,
+  hasAllowedPasswordCharacters,
   passwordByteLength,
 } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
@@ -21,8 +23,14 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  function handlePasswordInput(event: ChangeEvent<HTMLInputElement>) {
+    const value = event.target.value;
+    setPassword(value);
+    setError(hasAllowedPasswordCharacters(value) ? null : PASSWORD_CHARACTER_ERROR);
+  }
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault();
     setError(null);
 
     // The same policy the reset form enforces, because it is the same policy the backend enforces
@@ -33,7 +41,13 @@ export default function RegisterPage() {
       return;
     }
     if (passwordByteLength(password) > PASSWORD_MAX_LENGTH_BYTES) {
-      setError(`Password must be at most ${PASSWORD_MAX_LENGTH_BYTES} bytes.`);
+      setError(`Password must be at most ${PASSWORD_MAX_LENGTH_BYTES} characters.`);
+      return;
+    }
+    // Re-checked here and not only while typing: the clear above wipes the inline warning, so
+    // without this a pasted password of refused characters would go to the server unchallenged.
+    if (!hasAllowedPasswordCharacters(password)) {
+      setError(PASSWORD_CHARACTER_ERROR);
       return;
     }
 
@@ -66,7 +80,7 @@ export default function RegisterPage() {
         <input
           className="field"
           value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          onChange={(event) => setUsername(event.target.value)}
           placeholder="Username"
           autoComplete="username"
           maxLength={USERNAME_MAX_LENGTH}
@@ -76,7 +90,7 @@ export default function RegisterPage() {
           className="field"
           type="email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(event) => setEmail(event.target.value)}
           placeholder="Email"
           autoComplete="email"
           maxLength={EMAIL_MAX_LENGTH}
@@ -86,7 +100,7 @@ export default function RegisterPage() {
           className="field"
           type="password"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={handlePasswordInput}
           placeholder="Password"
           autoComplete="new-password"
           minLength={PASSWORD_MIN_LENGTH}
