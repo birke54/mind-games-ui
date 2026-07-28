@@ -19,7 +19,7 @@ export default function StatsPage() {
     <main className="mx-auto min-h-dvh w-full max-w-2xl px-4 py-8">
       <header className="mb-10 flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Stats</h1>
-        <Link to="/" className="text-sm text-slate-400 hover:text-slate-200">
+        <Link to="/sudoku/solo" className="text-sm text-slate-400 hover:text-slate-200">
           ← Back
         </Link>
       </header>
@@ -39,7 +39,7 @@ function Stats({ boards }: { boards: Parameters<typeof computeStats>[0] }) {
     return (
       <p className="text-slate-400">
         No boards yet.{" "}
-        <Link to="/" className="text-sky-400 underline">
+        <Link to="/sudoku/solo" className="text-sky-400 underline">
           Play one
         </Link>{" "}
         and this fills in.

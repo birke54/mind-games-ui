@@ -57,6 +57,14 @@ export default function App() {
               }
             />
             <Route
+              path="/sudoku/solo"
+              element={
+                <RequireAuth>
+                  <HomePage />
+                </RequireAuth>
+              }
+            />
+            <Route
               path="/sudoku/multiplayer"
               element={
                 <RequireAuth>
@@ -68,7 +76,7 @@ export default function App() {
               path="/"
               element={
                 <RequireAuth>
-                  <HomePage />
+                  <GamesPage />
                 </RequireAuth>
               }
             />

@@ -39,7 +39,7 @@ export default function PlayPage() {
     return (
       <Centered>
         <p className="mb-4">That board isn&apos;t yours, or doesn&apos;t exist.</p>
-        <Link to="/" className="text-sky-400 underline">
+        <Link to="/sudoku" className="text-sky-400 underline">
           Back
         </Link>
       </Centered>
@@ -177,7 +177,7 @@ function Game({ board }: { board: BoardResponse }) {
       )}
 
       <header className="mb-3 flex items-center justify-between text-sm">
-        <Link to="/" className="min-h-12 py-3 text-slate-400 hover:text-slate-200">
+        <Link to="/sudoku" className="min-h-12 py-3 text-slate-400 hover:text-slate-200">
           ← Back
         </Link>
         <span className="capitalize text-slate-300">{board.difficulty}</span>
@@ -255,7 +255,7 @@ function Game({ board }: { board: BoardResponse }) {
               <p className="mb-6 text-slate-300">
                 {board.difficulty} · {formatElapsed(state.elapsedSeconds)}
               </p>
-              <Link to="/" className="btn-primary grid place-items-center px-6">
+              <Link to="/sudoku/solo" className="btn-primary grid place-items-center px-6">
                 New game
               </Link>
             </Overlay>

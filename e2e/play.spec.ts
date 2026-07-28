@@ -139,7 +139,7 @@ test.describe("playing a board", () => {
     await page.reload();
     await expect(page.getByText("Solved", { exact: true })).toBeVisible();
 
-    await page.goto("/");
+    await page.goto("/sudoku/solo");
     await expect(page.getByText("Nothing on the go.")).toBeVisible();
   });
 

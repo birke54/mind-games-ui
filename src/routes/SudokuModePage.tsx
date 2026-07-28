@@ -37,7 +37,7 @@ export default function SudokuModePage() {
       <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <li>
           <Link
-            to="/"
+            to="/sudoku/solo"
             className="flex h-full flex-col items-center gap-4 rounded-2xl border border-slate-700 bg-slate-800/60 p-8 text-center hover:border-sky-500 hover:bg-slate-800"
           >
             <SinglePlayerIcon size="lg" />
