@@ -8,7 +8,7 @@ import { PASSWORD, newUsername, register, signIn, signUp } from "./helpers";
  * with authentication.
  */
 const expectSignedIn = async (page: Page) => {
-  await expect(page).toHaveURL("/");
+  await expect(page).toHaveURL("/sudoku/solo");
   await expect(page.getByRole("heading", { name: "New game" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 };
@@ -48,7 +48,7 @@ test.describe("authentication", () => {
     await expect(page.getByRole("heading", { name: "Choose a mode" })).toBeVisible();
 
     await page.getByRole("link", { name: "Single player" }).click();
-    await expect(page).toHaveURL("/");
+    await expect(page).toHaveURL("/sudoku/solo");
     await expect(page.getByRole("heading", { name: "New game" })).toBeVisible();
 
     // ...and back out through the mode picker to the games list.

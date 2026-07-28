@@ -18,12 +18,12 @@ export async function register(page: Page, username = newUsername()): Promise<st
   return username;
 }
 
-/** From the game hub, step through Sudoku's mode picker to the "/" home where a game is started. */
+/** From the game hub, step through Sudoku's mode picker to the solo home where a game is started. */
 export async function openSudoku(page: Page): Promise<void> {
   await page.getByRole("link", { name: "Sudoku" }).click();
   await page.waitForURL("/sudoku", { timeout: 20_000 });
   await page.getByRole("link", { name: "Single player" }).click();
-  await page.waitForURL("/", { timeout: 20_000 });
+  await page.waitForURL("/sudoku/solo", { timeout: 20_000 });
 }
 
 /** The common path for game tests: register, then step through the hub and mode picker. */

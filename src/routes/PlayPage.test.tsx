@@ -212,7 +212,7 @@ describe("the race win overlay", () => {
 
     expect(await screen.findByText("Solved")).toBeInTheDocument();
     expect(screen.queryByText("You won this race")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "New game" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "New game" })).toHaveAttribute("href", "/sudoku/solo");
   });
 });
 
