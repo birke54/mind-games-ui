@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "./api/client";
-import type { BoardResponse } from "./api/types";
+import type { BoardResponse, BoardStatsResponse } from "./api/types";
 import App from "./App";
 
 const PUZZLE =
@@ -33,9 +33,34 @@ const finished: BoardResponse = {
   completedAt: "2026-07-21T00:09:00Z",
 };
 
+/** Non-empty, so `/stats` renders the table and its links rather than the empty state. */
+const stats: BoardStatsResponse = {
+  boardsSolved: 1,
+  bestCompletedTime: 540,
+  totalPlayTime: 540,
+  statsByDifficulty: {
+    easy: {
+      boardsSolved: 1,
+      boardsInProgress: 1,
+      bestTime: 540,
+      solvedPlayTime: 540,
+      totalPlayTime: 540,
+    },
+    moderate: {
+      boardsSolved: 0,
+      boardsInProgress: 0,
+      bestTime: null,
+      solvedPlayTime: 0,
+      totalPlayTime: 0,
+    },
+    hard: { boardsSolved: 0, boardsInProgress: 0, bestTime: null, solvedPlayTime: 0, totalPlayTime: 0 },
+  },
+};
+
 const refreshAccessToken = vi.spyOn(api, "refreshAccessToken");
 const currentUsername = vi.spyOn(api, "currentUsername");
 const listBoards = vi.spyOn(api, "listBoards");
+const getStats = vi.spyOn(api, "getStats");
 const saveProgress = vi.spyOn(api, "saveProgress");
 const getMatch = vi.spyOn(api, "getMatch");
 
@@ -54,6 +79,7 @@ beforeEach(() => {
   refreshAccessToken.mockResolvedValue("token");
   currentUsername.mockReturnValue("ada");
   listBoards.mockResolvedValue([solo, finished]);
+  getStats.mockResolvedValue(stats);
   saveProgress.mockResolvedValue(solo);
   getMatch.mockRejectedValue(new Error("no match on a solo board"));
 });

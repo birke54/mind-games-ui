@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { BoardResponse, Difficulty } from "../api/types";
+import type {
+  BoardResponse,
+  BoardStatsResponse,
+  Difficulty,
+  DifficultyBreakdown,
+} from "../api/types";
 import { computeStats, progressOf, relativeTime } from "./stats";
 
 const SOLUTION =
@@ -29,9 +34,40 @@ const makeBoard = (
   lastModifiedAt: "2026-07-12T00:10:00Z",
 });
 
+const tier = (breakdown: Partial<DifficultyBreakdown> = {}): DifficultyBreakdown => ({
+  boardsSolved: 0,
+  boardsInProgress: 0,
+  bestTime: null,
+  solvedPlayTime: 0,
+  totalPlayTime: 0,
+  ...breakdown,
+});
+
+/**
+ * The wire shape of `GET /board/stats`. A tier reports `solvedPlayTime` (its solved boards, what an
+ * average divides) alongside `totalPlayTime` (every board), and the tier totals add up to the
+ * top-level one — the fixtures keep both relationships honest.
+ */
+const makeStats = (
+  stats: Partial<Omit<BoardStatsResponse, "statsByDifficulty">> & {
+    statsByDifficulty?: Partial<Record<Difficulty, DifficultyBreakdown>>;
+  } = {},
+): BoardStatsResponse => ({
+  boardsSolved: 0,
+  bestCompletedTime: null,
+  totalPlayTime: 0,
+  ...stats,
+  statsByDifficulty: {
+    easy: tier(),
+    moderate: tier(),
+    hard: tier(),
+    ...stats.statsByDifficulty,
+  },
+});
+
 describe("computeStats", () => {
   it("returns zeroes for a player with no boards", () => {
-    const stats = computeStats([]);
+    const stats = computeStats(makeStats());
     expect(stats.solved).toBe(0);
     expect(stats.inProgress).toBe(0);
     expect(stats.totalSeconds).toBe(0);
@@ -39,58 +75,111 @@ describe("computeStats", () => {
     expect(stats.byDifficulty).toHaveLength(3);
   });
 
-  it("counts solved and in-progress boards", () => {
-    const stats = computeStats([
-      makeBoard("easy", "completed", 100),
-      makeBoard("easy", "in_progress", 50),
-      makeBoard("hard", "completed", 900),
-    ]);
+  it("takes the solved count and the total from the server, and sums in-progress per tier", () => {
+    const stats = computeStats(
+      makeStats({
+        boardsSolved: 2,
+        totalPlayTime: 1050,
+        statsByDifficulty: {
+          easy: tier({
+            boardsSolved: 1,
+            boardsInProgress: 1,
+            bestTime: 100,
+            solvedPlayTime: 100,
+            totalPlayTime: 150,
+          }),
+          hard: tier({ boardsSolved: 1, bestTime: 900, solvedPlayTime: 900, totalPlayTime: 900 }),
+        },
+      }),
+    );
+
     expect(stats.solved).toBe(2);
     expect(stats.inProgress).toBe(1);
+    // 1050, not 1000: the server counts the unfinished board's 50 seconds. It was still time spent.
+    expect(stats.totalSeconds).toBe(1050);
   });
 
-  it("counts time from unfinished boards too — it was still time spent", () => {
-    const stats = computeStats([
-      makeBoard("easy", "completed", 100),
-      makeBoard("easy", "in_progress", 50),
-    ]);
-    expect(stats.totalSeconds).toBe(150);
-  });
-
-  // A best time may only come from a board that was actually solved. An abandoned board sitting
-  // at 5 seconds is not a 5-second solve.
-  it("takes the best time only from solved boards", () => {
-    const stats = computeStats([
-      makeBoard("easy", "completed", 300),
-      makeBoard("easy", "in_progress", 5),
-    ]);
-    expect(stats.bestSeconds).toBe(300);
-  });
-
-  it("finds the best across every difficulty", () => {
-    const stats = computeStats([
-      makeBoard("easy", "completed", 300),
-      makeBoard("hard", "completed", 120),
-    ]);
+  it("passes the overall best solve through", () => {
+    const stats = computeStats(makeStats({ boardsSolved: 2, bestCompletedTime: 120 }));
     expect(stats.bestSeconds).toBe(120);
   });
 
+  it("has no best time until a board is solved", () => {
+    const stats = computeStats(
+      makeStats({ totalPlayTime: 5, statsByDifficulty: { easy: tier({ boardsInProgress: 1 }) } }),
+    );
+    expect(stats.bestSeconds).toBeNull();
+  });
+
   it("breaks best and average down per difficulty", () => {
-    const stats = computeStats([
-      makeBoard("moderate", "completed", 100),
-      makeBoard("moderate", "completed", 200),
-      makeBoard("moderate", "in_progress", 9999),
-      makeBoard("easy", "completed", 60),
-    ]);
+    const stats = computeStats(
+      makeStats({
+        boardsSolved: 3,
+        bestCompletedTime: 60,
+        totalPlayTime: 10359,
+        statsByDifficulty: {
+          easy: tier({ boardsSolved: 1, bestTime: 60, solvedPlayTime: 60, totalPlayTime: 60 }),
+          moderate: tier({
+            boardsSolved: 2,
+            boardsInProgress: 1,
+            bestTime: 100,
+            solvedPlayTime: 300,
+            totalPlayTime: 10299,
+          }),
+        },
+      }),
+    );
 
     const moderate = stats.byDifficulty.find((d) => d.difficulty === "moderate")!;
     expect(moderate.solved).toBe(2);
     expect(moderate.inProgress).toBe(1);
     expect(moderate.bestSeconds).toBe(100);
+    // The unfinished board's 9999 seconds are in the tier's totalPlayTime, and so in the overall
+    // total, but solvedPlayTime leaves them out — which is the whole point of the two fields.
     expect(moderate.averageSeconds).toBe(150);
 
     const hard = stats.byDifficulty.find((d) => d.difficulty === "hard")!;
     expect(hard.solved).toBe(0);
+    expect(hard.bestSeconds).toBeNull();
+    expect(hard.averageSeconds).toBeNull();
+  });
+
+  it("rounds an average that does not divide evenly", () => {
+    const stats = computeStats(
+      makeStats({
+        boardsSolved: 3,
+        statsByDifficulty: {
+          easy: tier({ boardsSolved: 3, bestTime: 30, solvedPlayTime: 100, totalPlayTime: 100 }),
+        },
+      }),
+    );
+    expect(stats.byDifficulty.find((d) => d.difficulty === "easy")!.averageSeconds).toBe(33);
+  });
+
+  // Dividing play time by a solved count of zero would put NaN on the page — the table only
+  // renders an em dash for null.
+  it("reports no average for a tier that has been played but never solved", () => {
+    const stats = computeStats(
+      makeStats({ statsByDifficulty: { hard: tier({ boardsInProgress: 2 }) } }),
+    );
+    expect(stats.byDifficulty.find((d) => d.difficulty === "hard")!.averageSeconds).toBeNull();
+  });
+
+  // The endpoint reports every tier, zeroes included, so this should not happen — but the page has
+  // to render three rows regardless, and a missing key must not put NaN in them.
+  it("treats a tier missing from the response as unplayed", () => {
+    const stats = computeStats({
+      boardsSolved: 1,
+      bestCompletedTime: 60,
+      totalPlayTime: 60,
+      statsByDifficulty: {
+        easy: tier({ boardsSolved: 1, bestTime: 60, solvedPlayTime: 60, totalPlayTime: 60 }),
+      } as BoardStatsResponse["statsByDifficulty"],
+    });
+
+    const hard = stats.byDifficulty.find((d) => d.difficulty === "hard")!;
+    expect(hard.solved).toBe(0);
+    expect(hard.inProgress).toBe(0);
     expect(hard.bestSeconds).toBeNull();
     expect(hard.averageSeconds).toBeNull();
   });

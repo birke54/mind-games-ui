@@ -1,19 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import * as api from "../api/client";
+import type { BoardStatsResponse } from "../api/types";
 import { formatElapsed } from "../game/sudoku";
 import { computeStats } from "../game/stats";
 
 /**
- * Stats, folded out of the board list on the client — the backend has no stats endpoint and
- * doesn't need one.
+ * Stats, totalled by the backend at `GET /board/stats` — the board list is capped at five
+ * unfinished boards, so the client cannot fold these itself.
  *
  * These are a handful of headline numbers, so they get a hero figure, a row of stat tiles, and a
  * table for the per-difficulty breakdown. A bar chart of three bars would be a chart for the sake
  * of having one.
  */
 export default function StatsPage() {
-  const boards = useQuery({ queryKey: ["boards"], queryFn: api.listBoards });
+  const boardStats = useQuery({ queryKey: ["boardStats"], queryFn: api.getStats });
 
   return (
     <main className="mx-auto min-h-dvh w-full max-w-2xl px-4 py-8">
@@ -24,18 +25,18 @@ export default function StatsPage() {
         </Link>
       </header>
 
-      {boards.isPending && <p className="text-slate-400">Loading…</p>}
-      {boards.isError && <p className="text-rose-400">Could not load your boards.</p>}
+      {boardStats.isPending && <p className="text-slate-400">Loading…</p>}
+      {boardStats.isError && <p className="text-rose-400">Could not load your stats.</p>}
 
-      {boards.isSuccess && <Stats boards={boards.data} />}
+      {boardStats.isSuccess && <Stats boardStats={boardStats.data} />}
     </main>
   );
 }
 
-function Stats({ boards }: { boards: Parameters<typeof computeStats>[0] }) {
-  const stats = computeStats(boards);
+function Stats({ boardStats }: { boardStats: BoardStatsResponse }) {
+  const stats = computeStats(boardStats);
 
-  if (boards.length === 0) {
+  if (stats.solved === 0 && stats.inProgress === 0) {
     return (
       <p className="text-slate-400">
         No boards yet.{" "}

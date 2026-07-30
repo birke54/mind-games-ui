@@ -40,6 +40,37 @@ export interface SaveBoardProgress {
   elapsedSeconds: number;
 }
 
+/**
+ * A player's lifetime board stats, totalled server-side out of a single grouped aggregate.
+ *
+ * The client cannot fold these out of `GET /boards` any more: that list is capped at five
+ * unfinished boards, so it never sees a completed one.
+ */
+export interface BoardStatsResponse {
+  boardsSolved: number;
+  /** Fastest solve at any difficulty, or null until the player finishes a board. */
+  bestCompletedTime: number | null;
+  /** Seconds across every board, finished or not. */
+  totalPlayTime: number;
+  statsByDifficulty: Record<Difficulty, DifficultyBreakdown>;
+}
+
+/** One tier's totals. */
+export interface DifficultyBreakdown {
+  boardsSolved: number;
+  boardsInProgress: number;
+  /** Fastest solve in this tier, or null until one is finished here. */
+  bestTime: number | null;
+  /**
+   * Seconds spent on this tier's *solved* boards only. Reported apart from `totalPlayTime` because
+   * over `boardsSolved` it is a mean solve time; time on a board still being played would inflate
+   * that.
+   */
+  solvedPlayTime: number;
+  /** Seconds spent on this tier's boards, finished or not. These sum to the overall total. */
+  totalPlayTime: number;
+}
+
 /* ---------------------------------------------------------------- multiplayer */
 
 export type MatchStatus = "waiting" | "active" | "finished" | "abandoned";

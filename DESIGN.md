@@ -25,7 +25,8 @@ is nothing else to call.
 | POST | `/api/v1/request_password_reset` | public | `{email}` | `202`, empty body, **unconditionally** | — |
 | POST | `/api/v1/reset_password` | public | `{token, password}` | `204`, no session started | `400 {error}` dead link *or* rejected password |
 | GET | `/api/v1/board?difficulty=` | bearer | `easy\|moderate\|hard` | `200 BoardResponse` | `400` bad difficulty, `503` pool empty |
-| GET | `/api/v1/boards` | bearer | — | `200 BoardResponse[]` (newest activity first) | — |
+| GET | `/api/v1/boards` | bearer | — | `200 BoardResponse[]` — up to **5 unfinished** boards, newest activity first | — |
+| GET | `/api/v1/board/stats` | bearer | — | `200 BoardStatsResponse` (lifetime totals, overall + per tier) | — |
 | PUT | `/api/v1/boards/{id}` | bearer | `{currentState, notes, elapsedSeconds}` | `200 BoardResponse` | `404` not yours, `409` already completed |
 
 The password policy (`PasswordPolicy`) is **≥ 8 characters and ≤ 30 *bytes* of UTF-8**. The maximum
@@ -124,7 +125,7 @@ src/
   game/
     sudoku.ts        # pure: peers(i), conflicts(grid), mistakes(grid, solution), isSolved(…)
     gameReducer.ts   # pure: the game rules. SELECT | INPUT_DIGIT | ERASE | HINT | CHECK | UNDO | …
-    stats.ts         # pure: folds GET /boards into the stats page and the resume list
+    stats.ts         # pure: GET /board/stats into the stats page; resume-list helpers
     boardMirror.ts   # localStorage mirror + reconcile() — offline play and conflict detection
     useGameTimer.ts  # visibility-aware elapsed clock
     useAutosave.ts   # debounced PUT, flush on hide/pagehide/online
@@ -408,7 +409,7 @@ completed elsewhere — treat it as success and freeze. A board arriving from `/
 | `/games` | Game hub | guarded | The post-login landing (login and register send you here, unless a guarded deep link bounced you through `/login`, in which case you return there). A game picker: the Sudoku tile → `/`; a second tile is a placeholder for games still to come. No API calls of its own. |
 | `/` | Home | guarded | Difficulty picker (easy / moderate / hard) → `GET /board`; below it, the in-progress boards from `GET /boards` to resume. `503` → "we're baking fresh puzzles, try again in a moment" with a retry that backs off (the pool refills on a 5-minute cron). |
 | `/play/:boardId` | Play | guarded | The grid. Hydrates from the query cache or the localStorage mirror. |
-| `/stats` | Stats | guarded | **Free win:** `GET /boards` already returns every board with status, difficulty, and `elapsedSeconds`. Completed count, best and average time per difficulty, current streak — all derived client-side, zero backend work. |
+| `/stats` | Stats | guarded | `GET /board/stats`. These were once folded client-side out of `GET /boards`, which stopped working when that list narrowed to five *unfinished* boards — it can no longer see a completed board at all. The backend totals them in one grouped aggregate instead, so the page never pulls a grid down to count it. A tier reports two play times: `solvedPlayTime` over its solved boards, which is what a mean *solve* time divides, and `totalPlayTime` over every board it has, which sums to the overall total. |
 
 The two reset screens are public by necessity: a user who needs them cannot authenticate, by
 definition. Everything else sits behind `RequireAuth`.
@@ -448,13 +449,14 @@ found by running the front-end against the real backend, not by reading it.
 1. **Optimistic concurrency on `PUT /boards/{id}`** *(highest value)*. A `version` column, or honouring
    `If-Unmodified-Since`, so a stale device gets a `409` instead of silently destroying progress.
    Directly caused by the "PC **and** mobile" requirement.
-2. **`DELETE /api/v1/boards/{id}`** — there is no way to abandon a board. `GET /boards` grows without
-   bound and the resume list turns into a graveyard. (Client-side we'd paginate, but that's papering.)
+2. **`DELETE /api/v1/boards/{id}`** — there is no way to abandon a board. The five-board cap on
+   `GET /boards` keeps the resume list short, but an abandoned board still sits there until four
+   newer ones push it off, and its time keeps counting toward the stats total.
 3. **`GET /api/v1/me`** — the username is only available by decoding the JWT client-side. Fine for a
    label, not something to build on.
-4. **Pagination on `GET /boards`** — today it returns *every* board a user has ever touched, each with
-   four 81-char strings and a notes blob. At a few hundred boards that's a slow, fat payload on a
-   phone.
+4. **Board history** — `GET /boards` now returns only the five most recent unfinished boards, so
+   there is no way to page back through finished ones. The stats endpoint covers the totals; a
+   "past games" list would need a paginated history endpoint.
 5. **CORS for local dev** — optional. The Vite proxy makes it unnecessary, and *not* having CORS is a
    defensible security posture given the same-origin CloudFront topology. Worth an explicit decision
    rather than an accident.

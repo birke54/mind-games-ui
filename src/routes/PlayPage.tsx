@@ -65,6 +65,11 @@ function Game({ board }: { board: BoardResponse }) {
     (saved: BoardResponse) => {
       queryClient.setQueryData(["board", saved.id], saved);
       void queryClient.invalidateQueries({ queryKey: ["boards"] });
+      // Stats are server-side totals now, so they go stale the moment a board completes. Only
+      // then: this fires on every autosave, and an in-flight board moves no figure on that page.
+      if (saved.status === "completed") {
+        void queryClient.invalidateQueries({ queryKey: ["boardStats"] });
+      }
     },
     [queryClient],
   );
