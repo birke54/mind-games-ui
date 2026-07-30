@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as api from "../api/client";
 import { ApiError } from "../api/client";
 import type { BoardResponse } from "../api/types";
-import { clearMirror, writeMirror } from "./boardMirror";
+import { writeMirror } from "./boardMirror";
 import {
   currentStateString,
   hasUnsavedChanges,
@@ -125,12 +125,15 @@ export function useAutosave(
   const completed = state.status === "completed";
 
   // Mirror locally on every change. This is what makes an unsaved move survive a reload, a dead
-  // tab, or a tunnel — the network save is best-effort on top of it. A completed board is
-  // immutable server-side, so its mirror is dead weight.
+  // tab, or a tunnel — the network save is best-effort on top of it.
+  //
+  // A finished board keeps its mirror rather than dropping it. Nothing local can *change* one, but
+  // GET /boards does not list completed boards and there is no fetch-by-id, so the mirror is the
+  // only thing that can still show the board the player just solved — on the reload right after,
+  // or from a bookmark much later.
   useEffect(() => {
-    if (completed) clearMirror(state.boardId);
-    else if (serverBoard.current) writeMirror(state, serverBoard.current);
-  }, [state, completed]);
+    if (serverBoard.current) writeMirror(state, serverBoard.current);
+  }, [state]);
 
   useEffect(() => {
     if (!edited || completed) return;

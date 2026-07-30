@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../api/client";
 import { ApiError, NetworkError } from "../api/client";
 import type { BoardResponse, MatchPlayer, MatchResponse } from "../api/types";
+import { writeMirror } from "../game/boardMirror";
+import { initialState } from "../game/gameReducer";
 import PlayPage from "./PlayPage";
 
 const PUZZLE =
@@ -63,13 +65,14 @@ const getMatch = vi.spyOn(api, "getMatch");
 const saveProgress = vi.spyOn(api, "saveProgress");
 const currentUsername = vi.spyOn(api, "currentUsername");
 
-function renderPlay(board: BoardResponse) {
-  listBoards.mockResolvedValue([board]);
+/** Boot `/play/:boardId` against whatever the board list happens to return. */
+function renderPlayId(boardId: number, listed: BoardResponse[]) {
+  listBoards.mockResolvedValue(listed);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[`/play/${board.id}`]}>
+      <MemoryRouter initialEntries={[`/play/${boardId}`]}>
         <Routes>
           <Route path="/play/:boardId" element={<PlayPage />} />
         </Routes>
@@ -77,6 +80,8 @@ function renderPlay(board: BoardResponse) {
     </QueryClientProvider>,
   );
 }
+
+const renderPlay = (board: BoardResponse) => renderPlayId(board.id, [board]);
 
 const lossOverlay = () => screen.queryByText("Opponent finished first");
 /** The solo completion overlay, which a race board must never fall back to. */
@@ -265,5 +270,35 @@ describe("a race that never reports", () => {
     await screen.findByRole("region", { name: "Race progress" });
     expect(solvedOverlay()).not.toBeInTheDocument();
     expect(lossOverlay()).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * `GET /boards` answers "what can I resume?" — the five most recent *unfinished* boards — and there
+ * is no fetch-by-id. So the board a player has just solved is, from the next reload onwards, a board
+ * the server will not hand back. The mirror is what still holds it.
+ */
+describe("a board the list doesn't carry", () => {
+  const soloBoard: BoardResponse = { ...matchBoard, id: 12, solution: SOLUTION, matchId: null };
+  const solved: BoardResponse = {
+    ...soloBoard,
+    status: "completed",
+    currentState: SOLUTION,
+    completedAt: "2026-07-21T00:04:00Z",
+  };
+
+  it("opens a solved board from the mirror rather than disowning it", async () => {
+    writeMirror(initialState(solved), solved);
+
+    renderPlayId(solved.id, []);
+
+    expect(await screen.findByText("Solved")).toBeInTheDocument();
+  });
+
+  // The mirror only holds boards played on this device, so absent from both really is absent.
+  it("still says so when there is no mirror either", async () => {
+    renderPlayId(soloBoard.id, []);
+
+    expect(await screen.findByText(/isn't yours/)).toBeInTheDocument();
   });
 });

@@ -23,6 +23,9 @@ interface AuthContextValue {
   status: Status;
   username: string | null;
   offline: boolean;
+  /** Whether the session ended because the player asked it to, rather than expiring or never
+   *  existing. {@link RequireAuth} uses it to decide where the next sign-in lands. */
+  signedOut: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   clearSession: () => void;
@@ -73,6 +76,7 @@ const hadSession = (): boolean => {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>("bootstrapping");
   const [username, setUsername] = useState<string | null>(null);
+  const [signedOut, setSignedOut] = useState(false);
 
   const bootstrap = useCallback(async () => {
     try {
@@ -113,6 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await api.authenticate({ username: user, password });
     setUsername(api.currentUsername() ?? user);
     setStatus("authenticated");
+    setSignedOut(false);
     rememberSession(true);
   }, []);
 
@@ -121,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     rememberSession(false);
     setUsername(null);
     setStatus("anonymous");
+    setSignedOut(true);
   }, []);
 
   /**
@@ -145,8 +151,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ status, username, offline: status === "offline", login, logout, clearSession }),
-    [status, username, login, logout, clearSession],
+    () => ({
+      status,
+      username,
+      offline: status === "offline",
+      signedOut,
+      login,
+      logout,
+      clearSession,
+    }),
+    [status, username, signedOut, login, logout, clearSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -164,7 +178,7 @@ export function useAuth(): AuthContextValue {
  * because their board is on this device and the login screen could not help them anyway.
  */
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { status } = useAuth();
+  const { status, signedOut } = useAuth();
   const location = useLocation();
 
   if (status === "bootstrapping") {
@@ -177,10 +191,12 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 
   if (status === "anonymous") {
     // "/" is the generic entry point, not a deliberate deep link. Recording it as `from` would pin
-    // every login that starts at the root back to the Sudoku home and never show the hub — the
-    // normal way in is the root, so that would be everyone. A deeper guarded route (/play/42,
-    // /stats) is a real destination worth returning to, so preserve those.
-    const from = location.pathname === "/" ? undefined : location.pathname;
+    // every login that starts at the root back to the hub, which is where login lands anyway. A
+    // deeper guarded route (/play/42, /stats) is a real destination worth returning to, so
+    // preserve those — but only when the session ended *underneath* the player. Signing out is a
+    // decision to leave: the screen they left from is not somewhere to send the next sign-in, and
+    // on a shared browser it belongs to whoever just left, not to whoever signs in next.
+    const from = signedOut || location.pathname === "/" ? undefined : location.pathname;
     return <Navigate to="/login" replace state={from ? { from } : undefined} />;
   }
 
