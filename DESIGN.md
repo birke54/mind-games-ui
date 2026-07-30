@@ -133,7 +133,8 @@ src/
     Board.tsx  Cell.tsx  NumberPad.tsx  Controls.tsx
     GameIcons.tsx  GamePreviewTiles.tsx    # tile artwork; login preview + game hub
   routes/
-    GamesPage.tsx  HomePage.tsx  PlayPage.tsx  StatsPage.tsx  LoginPage.tsx  RegisterPage.tsx
+    GamesPage.tsx  SudokuModePage.tsx  HomePage.tsx  MultiplayerPage.tsx  PlayPage.tsx
+    StatsPage.tsx  LoginPage.tsx  RegisterPage.tsx
     ForgotPasswordPage.tsx  ResetPasswordPage.tsx   # public — see §7
 e2e/                 # Playwright: auth, play, offline, a11y, password-reset — against a real backend
 ```
@@ -405,8 +406,11 @@ completed elsewhere — treat it as success and freeze. A board arriving from `/
 | `/register` | Register | public | Mirror the server's validation: username ≤ 25, email ≤ 50 and format-checked, password ≥ 8 chars and ≤ 30 UTF-8 bytes. `409` → "username or email already taken". |
 | `/forgot-password` | Forgot password | public | Email → `POST /request_password_reset`. Renders one neutral confirmation no matter what comes back (constraint 8) — it must not become an account-enumeration oracle. |
 | `/reset-password?token=` | Reset password | public | Redeems the token from the emailed link. The link deep-links straight in, which works because CloudFront already maps `403`/`404` → `/index.html` (`docs/deployment.md` §2) — no infrastructure change. The raw token stays in the URL and is never persisted. Success does **not** sign you in: it sends you to `/login`, because a reset proves control of an inbox, not intent to start a session. |
-| `/games` | Game hub | guarded | The post-login landing (login and register send you here, unless a guarded deep link bounced you through `/login`, in which case you return there). A game picker: the Sudoku tile → `/`; a second tile is a placeholder for games still to come. No API calls of its own. |
-| `/` | Home | guarded | Difficulty picker (easy / moderate / hard) → `GET /board`; below it, the in-progress boards from `GET /boards` to resume. `503` → "we're baking fresh puzzles, try again in a moment" with a retry that backs off (the pool refills on a 5-minute cron). |
+| `/games` | Game hub | guarded | The post-login landing (login and register send you here, unless a guarded deep link bounced you through `/login`, in which case you return there). A game picker: the Sudoku tile → `/sudoku`; a second tile is a placeholder for games still to come. No API calls of its own. |
+| `/sudoku` | Mode picker | guarded | Solo → `/sudoku/solo`, multiplayer → `/sudoku/multiplayer`, and back up to `/games`. No API calls of its own. |
+| `/sudoku/solo` | Solo home | guarded | Difficulty picker (easy / moderate / hard) → `GET /board`; below it, the in-progress boards from `GET /boards` to resume. `503` → "we're baking fresh puzzles, try again in a moment" with a retry that backs off (the pool refills on a 5-minute cron). |
+| `/sudoku/multiplayer` | Multiplayer lobby | guarded | Open a race (`POST /matches`) and share the join code, or redeem someone else's (`POST /matches/join`). Only the host waits: their poll of `GET /matches/{id}` is the one thing that can tell them the opponent arrived, since the redemption that starts the race happens on the other player's device. The joiner gets a board id back from the join itself. Both hand off to `/play/:boardId`. |
+| `/` | Game hub | guarded | The same screen as `/games` — the hierarchy's root, so that "/" means what every other path means. The catch-all route redirects here, which is what keeps a link to a path no route matches from rendering a blank screen. |
 | `/play/:boardId` | Play | guarded | The grid. Hydrates from the query cache or the localStorage mirror. |
 | `/stats` | Stats | guarded | **Free win:** `GET /boards` already returns every board with status, difficulty, and `elapsedSeconds`. Completed count, best and average time per difficulty, current streak — all derived client-side, zero backend work. |
 
