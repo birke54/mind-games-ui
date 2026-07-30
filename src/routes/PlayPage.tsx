@@ -28,11 +28,19 @@ export default function PlayPage() {
     staleTime: Infinity,
   });
 
-  // Offline, that fetch cannot succeed — but the mirror holds the whole board, puzzle and solution
-  // included, precisely so the game can be reconstructed without it. The service worker brings back
-  // the shell; this brings back the board.
+  // The mirror holds the whole board, puzzle and solution included, precisely so the game can be
+  // reconstructed without that fetch — and it answers for two cases, not one:
+  //
+  //  - **Offline.** The fetch cannot succeed at all. The service worker brings back the shell;
+  //    this brings back the board.
+  //  - **A board the list doesn't carry.** It returns the five most recent *unfinished* boards, so
+  //    a finished one — or a sixth stale one — comes back absent rather than failing. Without this
+  //    fallback, reloading the board you just solved says it isn't yours.
+  //
+  // Absent still means absent when there is no mirror either: a board belonging to someone else,
+  // or a made-up id, has nothing to fall back to and lands on the message below.
   const mirrored = readMirror(id)?.board ?? null;
-  const board = query.data ?? (query.isError ? mirrored : null);
+  const board = query.data ?? mirrored;
 
   if (query.isPending && !mirrored) return <Centered>Loading…</Centered>;
   if (!board) {

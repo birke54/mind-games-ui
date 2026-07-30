@@ -6,10 +6,15 @@
  *  1. **Offline play.** The solution ships with the board, so a claimed board needs no network to
  *     be played.
  *
- *  2. **Offline *reload*.** The service worker brings the app shell back, but `GET /boards` — the
- *     only way to fetch a board by id — fails with no network. So the mirror stores the **whole
+ *  2. **Reload.** The service worker brings the app shell back, but the board has to come from
+ *     somewhere, and `GET /boards` — the only way to ask the server for one by id — can't always
+ *     supply it: not offline, and not for a board it doesn't list (it returns the five most recent
+ *     *unfinished* boards, so a solved one is never among them). So the mirror stores the **whole
  *     board**, puzzle and solution included, not just the moves: it has to be able to reconstruct
- *     the game on its own, or "playable offline" stops being true the moment the tab reloads.
+ *     the game on its own, or reloading loses it.
+ *
+ *     That is why a finished board keeps its mirror. Nothing local can change one — but nothing
+ *     else can show it either.
  *
  *  3. **Detecting a board changed elsewhere.** Saves are last-write-wins with no version check
  *     (DESIGN.md §6), so a stale tab can silently destroy the progress made on another device. The

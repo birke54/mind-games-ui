@@ -359,10 +359,15 @@ these was found by actually pulling the network in a browser, not by reasoning:
 
 1. **The service worker** precaches the shell, so the app loads with no network.
 2. **The mirror stores the whole board** — puzzle and solution, not just the moves. `GET /boards` is
-   the only way to fetch a board by id, and it cannot answer offline. Store only the moves and a
-   reload brings back the shell, fails the fetch, and renders *"that board isn't yours"* over a board
-   the player is holding in their hand.
-3. **`PlayPage` falls back to the mirror** when the fetch fails, instead of treating it as fatal.
+   the only way to ask the server for a board by id, and it cannot answer offline. Store only the
+   moves and a reload brings back the shell, fails the fetch, and renders *"that board isn't yours"*
+   over a board the player is holding in their hand.
+3. **`PlayPage` falls back to the mirror** whenever the list doesn't yield the board, instead of
+   treating that as fatal. Offline is one way that happens; the other is a board the API declines to
+   list — it returns five *unfinished* boards, so a solved one is never in it. That is also why a
+   finished board **keeps** its mirror rather than dropping it as dead weight: nothing local can
+   change one, but after a reload nothing else can show it either. Absent from both really is
+   absent, and still renders *"that board isn't yours"*.
 4. **A network error is not an auth failure.** The session bootstrap is a `POST /api/v1/refresh`,
    which offline cannot land — and treating that as "not signed in" bounces the player to the login
    screen, which is both wrong and useless to them (they cannot sign in offline either). So the
@@ -394,8 +399,9 @@ behaviour available to us given the API.
 
 **Completion:** when `grid === solution` locally, flush immediately, expect `status: "completed"`,
 then freeze the board and show the completion screen (time, difficulty). A `409` means it was already
-completed elsewhere — treat it as success and freeze. A board arriving from `/boards` already
-`completed` is rendered read-only.
+completed elsewhere — treat it as success and freeze. A board that is already `completed` when it is
+opened — which, since `/boards` stops listing it, means one restored from the mirror — is rendered
+read-only.
 
 ---
 
@@ -458,9 +464,12 @@ found by running the front-end against the real backend, not by reading it.
    newer ones push it off, and its time keeps counting toward the stats total.
 3. **`GET /api/v1/me`** — the username is only available by decoding the JWT client-side. Fine for a
    label, not something to build on.
-4. **Board history** — `GET /boards` now returns only the five most recent unfinished boards, so
-   there is no way to page back through finished ones. The stats endpoint covers the totals; a
-   "past games" list would need a paginated history endpoint.
+4. **Board history, and `GET /boards/{id}`** — `GET /boards` now returns only the five most recent
+   unfinished boards, so there is no way to page back through finished ones. The stats endpoint
+   covers the totals; a "past games" list would need a paginated history endpoint. The narrowing
+   also took away the only fetch-by-id there was: a board the list omits can be rendered from the
+   local mirror, which covers boards played on *this* device and nothing else, so a solved board
+   opened on a second device cannot be shown at all.
 5. **CORS for local dev** — optional. The Vite proxy makes it unnecessary, and *not* having CORS is a
    defensible security posture given the same-origin CloudFront topology. Worth an explicit decision
    rather than an accident.

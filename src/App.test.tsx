@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "./api/client";
 import type { BoardResponse, BoardStatsResponse } from "./api/types";
@@ -58,6 +59,8 @@ const stats: BoardStatsResponse = {
 };
 
 const refreshAccessToken = vi.spyOn(api, "refreshAccessToken");
+const authenticate = vi.spyOn(api, "authenticate");
+const logout = vi.spyOn(api, "logout");
 const currentUsername = vi.spyOn(api, "currentUsername");
 const listBoards = vi.spyOn(api, "listBoards");
 const getStats = vi.spyOn(api, "getStats");
@@ -77,6 +80,8 @@ const settled = () =>
 beforeEach(() => {
   vi.clearAllMocks();
   refreshAccessToken.mockResolvedValue("token");
+  authenticate.mockResolvedValue("token");
+  logout.mockResolvedValue(undefined);
   currentUsername.mockReturnValue("ada");
   listBoards.mockResolvedValue([solo, finished]);
   getStats.mockResolvedValue(stats);
@@ -110,6 +115,42 @@ describe("the route table", () => {
 
     expect(await screen.findByRole("heading", { name: "Choose your game" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/");
+  });
+});
+
+/**
+ * The guard sends an anonymous visitor to /login carrying where they were, so a deep link survives
+ * the trip through the login form. A sign-out is not that: the player asked to leave, and the
+ * screen they left is not a destination to hand to whoever signs in next — which on a shared
+ * browser is somebody else entirely.
+ */
+describe("signing out", () => {
+  it("starts the next sign-in at the hub, not at the screen it left", async () => {
+    const user = userEvent.setup();
+    renderAt("/sudoku/solo");
+
+    await user.click(await screen.findByRole("button", { name: "Sign out" }));
+
+    await user.type(await screen.findByPlaceholderText("Username"), "grace");
+    await user.type(screen.getByPlaceholderText("Password"), "hunter2password");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByRole("heading", { name: "Choose your game" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/games");
+  });
+
+  it("still returns a deep link that expired underneath the player", async () => {
+    const user = userEvent.setup();
+    // Never signed in: /stats bounces to the login form and is worth coming back to.
+    refreshAccessToken.mockRejectedValue(new api.SessionExpiredError());
+    renderAt("/stats");
+
+    await user.type(await screen.findByPlaceholderText("Username"), "grace");
+    await user.type(screen.getByPlaceholderText("Password"), "hunter2password");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByRole("heading", { name: "Stats" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/stats");
   });
 });
 
