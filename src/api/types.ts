@@ -62,9 +62,12 @@ export interface DifficultyBreakdown {
   /** Fastest solve in this tier, or null until one is finished here. */
   bestTime: number | null;
   /**
-   * Seconds spent on this tier's *solved* boards only — unlike the overall `totalPlayTime`, which
-   * counts unfinished boards too. That asymmetry is what makes a mean solve time computable.
+   * Seconds spent on this tier's *solved* boards only. Reported apart from `totalPlayTime` because
+   * over `boardsSolved` it is a mean solve time; time on a board still being played would inflate
+   * that.
    */
+  solvedPlayTime: number;
+  /** Seconds spent on this tier's boards, finished or not. These sum to the overall total. */
   totalPlayTime: number;
 }
 

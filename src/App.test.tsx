@@ -39,9 +39,21 @@ const stats: BoardStatsResponse = {
   bestCompletedTime: 540,
   totalPlayTime: 540,
   statsByDifficulty: {
-    easy: { boardsSolved: 1, boardsInProgress: 1, bestTime: 540, totalPlayTime: 540 },
-    moderate: { boardsSolved: 0, boardsInProgress: 0, bestTime: null, totalPlayTime: 0 },
-    hard: { boardsSolved: 0, boardsInProgress: 0, bestTime: null, totalPlayTime: 0 },
+    easy: {
+      boardsSolved: 1,
+      boardsInProgress: 1,
+      bestTime: 540,
+      solvedPlayTime: 540,
+      totalPlayTime: 540,
+    },
+    moderate: {
+      boardsSolved: 0,
+      boardsInProgress: 0,
+      bestTime: null,
+      solvedPlayTime: 0,
+      totalPlayTime: 0,
+    },
+    hard: { boardsSolved: 0, boardsInProgress: 0, bestTime: null, solvedPlayTime: 0, totalPlayTime: 0 },
   },
 };
 

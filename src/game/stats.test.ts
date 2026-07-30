@@ -38,13 +38,15 @@ const tier = (breakdown: Partial<DifficultyBreakdown> = {}): DifficultyBreakdown
   boardsSolved: 0,
   boardsInProgress: 0,
   bestTime: null,
+  solvedPlayTime: 0,
   totalPlayTime: 0,
   ...breakdown,
 });
 
 /**
- * The wire shape of `GET /board/stats`. A tier's `totalPlayTime` covers its *solved* boards only,
- * while the top-level one counts unfinished boards too — the fixtures keep that asymmetry.
+ * The wire shape of `GET /board/stats`. A tier reports `solvedPlayTime` (its solved boards, what an
+ * average divides) alongside `totalPlayTime` (every board), and the tier totals add up to the
+ * top-level one — the fixtures keep both relationships honest.
  */
 const makeStats = (
   stats: Partial<Omit<BoardStatsResponse, "statsByDifficulty">> & {
@@ -79,8 +81,14 @@ describe("computeStats", () => {
         boardsSolved: 2,
         totalPlayTime: 1050,
         statsByDifficulty: {
-          easy: tier({ boardsSolved: 1, boardsInProgress: 1, bestTime: 100, totalPlayTime: 100 }),
-          hard: tier({ boardsSolved: 1, bestTime: 900, totalPlayTime: 900 }),
+          easy: tier({
+            boardsSolved: 1,
+            boardsInProgress: 1,
+            bestTime: 100,
+            solvedPlayTime: 100,
+            totalPlayTime: 150,
+          }),
+          hard: tier({ boardsSolved: 1, bestTime: 900, solvedPlayTime: 900, totalPlayTime: 900 }),
         },
       }),
     );
@@ -110,12 +118,13 @@ describe("computeStats", () => {
         bestCompletedTime: 60,
         totalPlayTime: 10359,
         statsByDifficulty: {
-          easy: tier({ boardsSolved: 1, bestTime: 60, totalPlayTime: 60 }),
+          easy: tier({ boardsSolved: 1, bestTime: 60, solvedPlayTime: 60, totalPlayTime: 60 }),
           moderate: tier({
             boardsSolved: 2,
             boardsInProgress: 1,
             bestTime: 100,
-            totalPlayTime: 300,
+            solvedPlayTime: 300,
+            totalPlayTime: 10299,
           }),
         },
       }),
@@ -125,7 +134,8 @@ describe("computeStats", () => {
     expect(moderate.solved).toBe(2);
     expect(moderate.inProgress).toBe(1);
     expect(moderate.bestSeconds).toBe(100);
-    // The unfinished board's 9999 seconds are in the overall total but not in this average.
+    // The unfinished board's 9999 seconds are in the tier's totalPlayTime, and so in the overall
+    // total, but solvedPlayTime leaves them out — which is the whole point of the two fields.
     expect(moderate.averageSeconds).toBe(150);
 
     const hard = stats.byDifficulty.find((d) => d.difficulty === "hard")!;
@@ -138,7 +148,9 @@ describe("computeStats", () => {
     const stats = computeStats(
       makeStats({
         boardsSolved: 3,
-        statsByDifficulty: { easy: tier({ boardsSolved: 3, bestTime: 30, totalPlayTime: 100 }) },
+        statsByDifficulty: {
+          easy: tier({ boardsSolved: 3, bestTime: 30, solvedPlayTime: 100, totalPlayTime: 100 }),
+        },
       }),
     );
     expect(stats.byDifficulty.find((d) => d.difficulty === "easy")!.averageSeconds).toBe(33);
@@ -153,15 +165,15 @@ describe("computeStats", () => {
     expect(stats.byDifficulty.find((d) => d.difficulty === "hard")!.averageSeconds).toBeNull();
   });
 
-  // The endpoint's contract documents unplayed tiers as absent rows, even though it currently
-  // fills them in with zeroes. Either way the page has to render three rows.
+  // The endpoint reports every tier, zeroes included, so this should not happen — but the page has
+  // to render three rows regardless, and a missing key must not put NaN in them.
   it("treats a tier missing from the response as unplayed", () => {
     const stats = computeStats({
       boardsSolved: 1,
       bestCompletedTime: 60,
       totalPlayTime: 60,
       statsByDifficulty: {
-        easy: tier({ boardsSolved: 1, bestTime: 60, totalPlayTime: 60 }),
+        easy: tier({ boardsSolved: 1, bestTime: 60, solvedPlayTime: 60, totalPlayTime: 60 }),
       } as BoardStatsResponse["statsByDifficulty"],
     });
 

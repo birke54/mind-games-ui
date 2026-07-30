@@ -36,14 +36,15 @@ export interface PlayerStats {
 }
 
 /**
- * A tier the player has never touched. The backend fills those in with zeroes, but its own contract
- * documents them as absent rows — cheap to tolerate either, and a missing key would otherwise
- * render every figure on the page as NaN.
+ * A tier the player has never touched. The backend reports every tier, zeroes included, so this is
+ * belt-and-braces — but a missing key would render every figure on the page as NaN, which is a bad
+ * way to find out the contract changed.
  */
 const UNPLAYED: DifficultyBreakdown = {
   boardsSolved: 0,
   boardsInProgress: 0,
   bestTime: null,
+  solvedPlayTime: 0,
   totalPlayTime: 0,
 };
 
@@ -56,9 +57,10 @@ export function computeStats(stats: BoardStatsResponse): PlayerStats {
       solved: tier.boardsSolved,
       inProgress: tier.boardsInProgress,
       bestSeconds: tier.bestTime,
-      // The tier's play time counts solved boards only, so this is a mean *solve* time.
+      // Solved-board time over solved boards: a mean *solve* time. The tier's totalPlayTime counts
+      // boards still being played, which would inflate it.
       averageSeconds: tier.boardsSolved
-        ? Math.round(tier.totalPlayTime / tier.boardsSolved)
+        ? Math.round(tier.solvedPlayTime / tier.boardsSolved)
         : null,
     };
   });
