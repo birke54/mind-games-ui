@@ -1,12 +1,19 @@
 /**
- * Player statistics, derived entirely on the client from `GET /api/v1/boards`.
+ * Player statistics, totalled by the backend and served by `GET /api/v1/board/stats`.
  *
- * The backend has no stats endpoint, and doesn't need one: the board list already carries status,
- * difficulty and elapsed time for every board the player has ever touched. Everything below is a
- * fold over that list.
+ * They used to be a fold over the board list on the client, which no longer works: that list is
+ * capped at the five most recent *unfinished* boards, so it cannot see a completed board at all.
+ * The backend answers from one grouped aggregate instead, and everything below is a rename of the
+ * wire shape into the one the page renders.
  */
 
-import { DIFFICULTIES, type BoardResponse, type Difficulty } from "../api/types";
+import {
+  DIFFICULTIES,
+  type BoardResponse,
+  type BoardStatsResponse,
+  type Difficulty,
+  type DifficultyBreakdown,
+} from "../api/types";
 
 export interface DifficultyStats {
   difficulty: Difficulty;
@@ -28,33 +35,39 @@ export interface PlayerStats {
   byDifficulty: DifficultyStats[];
 }
 
-export function computeStats(boards: readonly BoardResponse[]): PlayerStats {
+/**
+ * A tier the player has never touched. The backend fills those in with zeroes, but its own contract
+ * documents them as absent rows — cheap to tolerate either, and a missing key would otherwise
+ * render every figure on the page as NaN.
+ */
+const UNPLAYED: DifficultyBreakdown = {
+  boardsSolved: 0,
+  boardsInProgress: 0,
+  bestTime: null,
+  totalPlayTime: 0,
+};
+
+export function computeStats(stats: BoardStatsResponse): PlayerStats {
   const byDifficulty = DIFFICULTIES.map((difficulty) => {
-    const mine = boards.filter((b) => b.difficulty === difficulty);
-    const solvedTimes = mine
-      .filter((b) => b.status === "completed")
-      .map((b) => b.elapsedSeconds);
+    const tier = stats.statsByDifficulty[difficulty] ?? UNPLAYED;
 
     return {
       difficulty,
-      solved: solvedTimes.length,
-      inProgress: mine.filter((b) => b.status === "in_progress").length,
-      bestSeconds: solvedTimes.length ? Math.min(...solvedTimes) : null,
-      averageSeconds: solvedTimes.length
-        ? Math.round(solvedTimes.reduce((a, b) => a + b, 0) / solvedTimes.length)
+      solved: tier.boardsSolved,
+      inProgress: tier.boardsInProgress,
+      bestSeconds: tier.bestTime,
+      // The tier's play time counts solved boards only, so this is a mean *solve* time.
+      averageSeconds: tier.boardsSolved
+        ? Math.round(tier.totalPlayTime / tier.boardsSolved)
         : null,
     };
   });
 
-  const bests = byDifficulty
-    .map((d) => d.bestSeconds)
-    .filter((s): s is number => s !== null);
-
   return {
-    solved: byDifficulty.reduce((total, d) => total + d.solved, 0),
+    solved: stats.boardsSolved,
     inProgress: byDifficulty.reduce((total, d) => total + d.inProgress, 0),
-    totalSeconds: boards.reduce((total, b) => total + b.elapsedSeconds, 0),
-    bestSeconds: bests.length ? Math.min(...bests) : null,
+    totalSeconds: stats.totalPlayTime,
+    bestSeconds: stats.bestCompletedTime,
     byDifficulty,
   };
 }

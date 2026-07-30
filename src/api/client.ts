@@ -16,6 +16,7 @@
 import type {
   AuthenticateRequest,
   BoardResponse,
+  BoardStatsResponse,
   CreateMatchRequest,
   Difficulty,
   JoinMatchRequest,
@@ -282,9 +283,18 @@ export async function claimBoard(difficulty: Difficulty): Promise<BoardResponse>
   return request(`/api/v1/board?difficulty=${difficulty}`);
 }
 
-/** Every board the caller has ever touched, most recently played first. */
+/**
+ * Up to five of the caller's most recent *unfinished* boards, newest activity first. Completed
+ * boards are left out — this list exists to resume from, and there is nothing to resume on a
+ * finished board.
+ */
 export async function listBoards(): Promise<BoardResponse[]> {
   return request("/api/v1/boards");
+}
+
+/** The caller's lifetime stats, totalled server-side. */
+export async function getStats(): Promise<BoardStatsResponse> {
+  return request("/api/v1/board/stats");
 }
 
 /** Throws ApiError(409) if the board is already completed — completion is terminal. */

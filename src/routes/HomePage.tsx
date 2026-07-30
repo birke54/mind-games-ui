@@ -20,12 +20,13 @@ export default function HomePage() {
       // Seed the cache so Play renders at once instead of refetching the board we were just handed.
       queryClient.setQueryData(["board", board.id], board);
       void queryClient.invalidateQueries({ queryKey: ["boards"] });
+      void queryClient.invalidateQueries({ queryKey: ["boardStats"] });
       navigate(`/play/${board.id}`);
     },
   });
 
-  // The API returns every board ever touched, newest activity first, and there is no way to
-  // abandon one (see DESIGN.md §8) — so the list only grows. Show the recent few and no more.
+  // The API already caps this at the five most recent unfinished boards, newest activity first.
+  // The filter and the slice are belt-and-braces: this list must never grow past a screenful.
   const inProgress = (boards.data ?? []).filter((b) => b.status === "in_progress");
   const recent = inProgress.slice(0, 5);
 
