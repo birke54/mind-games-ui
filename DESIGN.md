@@ -409,7 +409,7 @@ read-only.
 
 | Route | Screen | Auth | Notes |
 |---|---|---|---|
-| `/login` | Login | public | The server strips the reason from a `401` (§8, item 0b), so the copy is ours — and a locked-out account (`SECURITY_LOCKOUT_THRESHOLD`) is, unhappily, indistinguishable from a wrong password. Handle `429`: API Gateway throttles auth to 5 rps and register to **1 rps / burst 3**. |
+| `/login` | Login | public | The server strips the reason from a `401` (§8, item 0b), so the copy is ours — and a locked-out account (`SECURITY_LOCKOUT_THRESHOLD`) is, unhappily, indistinguishable from a wrong password. Handle `429`: API Gateway throttles auth to 5 rps and register to **1 rps / burst 3**. **Temporarily switched off:** while `src/maintenance.ts` returns a notice, the form is disabled and a dismissible dialog says when we expect to be back (currently October 5); return `null` there to restore it. |
 | `/register` | Register | public | Mirror the server's validation: username ≤ 25, email ≤ 50 and format-checked, password ≥ 8 chars and ≤ 30 UTF-8 bytes. `409` → "username or email already taken". |
 | `/forgot-password` | Forgot password | public | Email → `POST /request_password_reset`. Renders one neutral confirmation no matter what comes back (constraint 8) — it must not become an account-enumeration oracle. |
 | `/reset-password?token=` | Reset password | public | Redeems the token from the emailed link. The link deep-links straight in, which works because CloudFront already maps `403`/`404` → `/index.html` (`docs/deployment.md` §2) — no infrastructure change. The raw token stays in the URL and is never persisted. Success does **not** sign you in: it sends you to `/login`, because a reset proves control of an inbox, not intent to start a session. |

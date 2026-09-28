@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { ApiError } from "../api/client";
+import { maintenanceNotice } from "../maintenance";
 import GamePreviewTiles from "../components/GamePreviewTiles";
 
 export default function LoginPage() {
@@ -10,6 +11,9 @@ export default function LoginPage() {
   // `notice` is set by ResetPasswordPage, which sends the user here rather than signing them in.
   const location = useLocation() as { state?: { from?: string; notice?: string } };
   const notice = location.state?.notice;
+
+  const maintenance = maintenanceNotice();
+  const [dialogOpen, setDialogOpen] = useState(maintenance !== null);
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -22,6 +26,10 @@ export default function LoginPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    // The fields and the button are already disabled during maintenance; this is the backstop for
+    // the submit paths that go around them — a password manager, or a stale tab left open when the
+    // window closed.
+    if (maintenance) return;
     setBusy(true);
     setError(null);
     try {
@@ -65,6 +73,17 @@ export default function LoginPage() {
               </p>
             )}
 
+            {/* Outlives the dialog, so a dismissed player is never left with a dead form and
+                nothing on screen saying why. */}
+            {maintenance && (
+              <p
+                role="status"
+                className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+              >
+                Sign-in is paused for maintenance. We expect to be back on {maintenance.until}.
+              </p>
+            )}
+
             <input
               className="field"
               value={username}
@@ -72,6 +91,7 @@ export default function LoginPage() {
               placeholder="Username"
               autoComplete="username"
               maxLength={25}
+              disabled={maintenance !== null}
               required
             />
             <input
@@ -81,6 +101,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
               autoComplete="current-password"
+              disabled={maintenance !== null}
               required
             />
 
@@ -90,7 +111,11 @@ export default function LoginPage() {
               </p>
             )}
 
-            <button type="submit" disabled={busy} className="btn-primary w-full">
+            <button
+              type="submit"
+              disabled={busy || maintenance !== null}
+              className="btn-primary w-full"
+            >
               {busy ? "Signing in…" : "Sign in"}
             </button>
 
@@ -114,7 +139,11 @@ export default function LoginPage() {
             <h2 className="text-lg font-semibold text-slate-100">
               Recruiter or prospective employer?
             </h2>
-            <p>Sign in with the guest account to look around — no sign-up needed.</p>
+            <p>
+              {maintenance
+                ? "The guest account is yours to use as soon as maintenance is over — no sign-up needed."
+                : "Sign in with the guest account to look around — no sign-up needed."}
+            </p>
             <p>
               Username: <span className="font-mono text-slate-100">recruiterguest</span>
               <br />
@@ -125,6 +154,40 @@ export default function LoginPage() {
 
         <GamePreviewTiles />
       </div>
+
+      {maintenance && dialogOpen && (
+        <MaintenanceDialog until={maintenance.until} onDismiss={() => setDialogOpen(false)} />
+      )}
     </main>
+  );
+}
+
+/**
+ * Says up front what a disabled form on its own cannot: sign-in is off on purpose, and until when.
+ * Dismissible, because the rest of the screen — the game previews, the guest credentials — is still
+ * worth reading, and the banner in the form keeps the message on the page afterwards.
+ */
+function MaintenanceDialog({ until, onDismiss }: { until: string; onDismiss: () => void }) {
+  return (
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="maintenance-title"
+      aria-describedby="maintenance-body"
+      className="fixed inset-0 z-10 grid place-items-center bg-slate-950/80 px-4 backdrop-blur-sm"
+    >
+      <div className="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-800 p-6">
+        <h2 id="maintenance-title" className="mb-2 text-lg font-semibold">
+          Down for maintenance
+        </h2>
+        <p id="maintenance-body" className="mb-6 text-sm leading-relaxed text-slate-300">
+          We&apos;re doing some work on Cortex Clash, so signing in is switched off for now. We
+          expect to be back up by {until}. Thanks for your patience.
+        </p>
+        <button type="button" autoFocus onClick={onDismiss} className="btn-primary w-full">
+          Got it
+        </button>
+      </div>
+    </div>
   );
 }

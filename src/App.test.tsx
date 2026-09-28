@@ -5,6 +5,11 @@ import * as api from "./api/client";
 import type { BoardResponse, BoardStatsResponse } from "./api/types";
 import App from "./App";
 
+// These are routing tests, and two of them sign in to get past the guard. The login form is
+// switched off while maintenance is on (src/maintenance.ts), so they run against the form as it
+// exists on the other side of the outage — LoginPage.test.tsx owns the maintenance behaviour.
+vi.mock("./maintenance", () => ({ maintenanceNotice: () => null }));
+
 const PUZZLE =
   "530070000600195000098000060800060003400803001700020006060000280000419005000080079";
 const SOLUTION =
