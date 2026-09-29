@@ -1,10 +1,15 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "../api/client";
 import { ApiError } from "../api/client";
+import { maintenanceNotice } from "../maintenance";
 import ForgotPasswordPage from "./ForgotPasswordPage";
+
+vi.mock("../maintenance", () => ({ maintenanceNotice: vi.fn() }));
+
+const notice = vi.mocked(maintenanceNotice);
 
 const renderPage = () =>
   render(
@@ -21,6 +26,9 @@ const submit = async (email = "someone@example.com") => {
 
 beforeEach(() => {
   vi.spyOn(api, "requestPasswordReset").mockResolvedValue(undefined);
+  // Up, unless a test says otherwise: these cases are about the neutral confirmation, which only
+  // exists on the other side of the outage.
+  notice.mockReturnValue(null);
 });
 
 afterEach(() => {
@@ -74,6 +82,33 @@ describe("ForgotPasswordPage", () => {
     await submit();
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/could not reach the server/i);
+    expect(screen.queryByText(/if that address has an account/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("ForgotPasswordPage during maintenance", () => {
+  beforeEach(() => {
+    notice.mockReturnValue({ until: "October 5" });
+  });
+
+  it("says resets are paused and switches the form off", async () => {
+    renderPage();
+
+    expect(await screen.findByRole("alertdialog", { name: "Down for maintenance" })).toBeVisible();
+    expect(screen.getByText(/password resets are paused/i)).toHaveTextContent("October 5");
+    expect(screen.getByLabelText("Email")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send reset link" })).toBeDisabled();
+  });
+
+  // Never promise mail we cannot send: the reset email comes from the backend that is down.
+  it("does not request a reset even if the form submits anyway", async () => {
+    renderPage();
+
+    const form = screen.getByLabelText("Email").closest("form");
+    if (!form) throw new Error("the reset form is not on the page");
+    fireEvent.submit(form);
+
+    expect(api.requestPasswordReset).not.toHaveBeenCalled();
     expect(screen.queryByText(/if that address has an account/i)).not.toBeInTheDocument();
   });
 });

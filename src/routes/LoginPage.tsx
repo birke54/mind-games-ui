@@ -3,6 +3,7 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { ApiError } from "../api/client";
 import { maintenanceNotice } from "../maintenance";
+import { MaintenanceBanner, MaintenanceDialog } from "../components/Maintenance";
 import GamePreviewTiles from "../components/GamePreviewTiles";
 
 export default function LoginPage() {
@@ -13,7 +14,6 @@ export default function LoginPage() {
   const notice = location.state?.notice;
 
   const maintenance = maintenanceNotice();
-  const [dialogOpen, setDialogOpen] = useState(maintenance !== null);
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -73,15 +73,10 @@ export default function LoginPage() {
               </p>
             )}
 
-            {/* Outlives the dialog, so a dismissed player is never left with a dead form and
-                nothing on screen saying why. */}
             {maintenance && (
-              <p
-                role="status"
-                className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
-              >
-                Sign-in is paused for maintenance. We expect to be back on {maintenance.until}.
-              </p>
+              <MaintenanceBanner until={maintenance.until}>
+                Sign-in is paused for maintenance.
+              </MaintenanceBanner>
             )}
 
             <input
@@ -119,18 +114,28 @@ export default function LoginPage() {
               {busy ? "Signing in…" : "Sign in"}
             </button>
 
-            <p className="text-center text-sm text-slate-400">
-              <Link to="/forgot-password" className="text-sky-400 underline">
-                Forgot password?
-              </Link>
-            </p>
+            {/* Both destinations are down too, so during maintenance they are not offered at all:
+                a link to a screen that can only refuse you is worse than saying so here. */}
+            {maintenance ? (
+              <p className="text-center text-sm text-slate-400">
+                Creating an account and resetting a password are paused as well.
+              </p>
+            ) : (
+              <>
+                <p className="text-center text-sm text-slate-400">
+                  <Link to="/forgot-password" className="text-sky-400 underline">
+                    Forgot password?
+                  </Link>
+                </p>
 
-            <p className="text-center text-sm text-slate-400">
-              No account?{" "}
-              <Link to="/register" className="text-sky-400 underline">
-                Register
-              </Link>
-            </p>
+                <p className="text-center text-sm text-slate-400">
+                  No account?{" "}
+                  <Link to="/register" className="text-sky-400 underline">
+                    Register
+                  </Link>
+                </p>
+              </>
+            )}
           </form>
 
           {/* After the form in the DOM so the sign-in fields stay above the fold on phones and
@@ -155,39 +160,7 @@ export default function LoginPage() {
         <GamePreviewTiles />
       </div>
 
-      {maintenance && dialogOpen && (
-        <MaintenanceDialog until={maintenance.until} onDismiss={() => setDialogOpen(false)} />
-      )}
+      {maintenance && <MaintenanceDialog until={maintenance.until} />}
     </main>
-  );
-}
-
-/**
- * Says up front what a disabled form on its own cannot: sign-in is off on purpose, and until when.
- * Dismissible, because the rest of the screen — the game previews, the guest credentials — is still
- * worth reading, and the banner in the form keeps the message on the page afterwards.
- */
-function MaintenanceDialog({ until, onDismiss }: { until: string; onDismiss: () => void }) {
-  return (
-    <div
-      role="alertdialog"
-      aria-modal="true"
-      aria-labelledby="maintenance-title"
-      aria-describedby="maintenance-body"
-      className="fixed inset-0 z-10 grid place-items-center bg-slate-950/80 px-4 backdrop-blur-sm"
-    >
-      <div className="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-800 p-6">
-        <h2 id="maintenance-title" className="mb-2 text-lg font-semibold">
-          Down for maintenance
-        </h2>
-        <p id="maintenance-body" className="mb-6 text-sm leading-relaxed text-slate-300">
-          We&apos;re doing some work on Cortex Clash, so signing in is switched off for now. We
-          expect to be back up by {until}. Thanks for your patience.
-        </p>
-        <button type="button" autoFocus onClick={onDismiss} className="btn-primary w-full">
-          Got it
-        </button>
-      </div>
-    </div>
   );
 }

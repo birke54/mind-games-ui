@@ -64,6 +64,17 @@ describe("LoginPage during maintenance", () => {
     expect(api.authenticate).not.toHaveBeenCalled();
   });
 
+  // Registering and resetting are down with sign-in, so offering a way to either would be offering
+  // a screen that can only refuse the player.
+  it("offers no way through to registering or resetting", async () => {
+    renderPage();
+    await screen.findByPlaceholderText("Username");
+
+    expect(screen.queryByRole("link", { name: "Register" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Forgot password?" })).not.toBeInTheDocument();
+    expect(screen.getByText(/creating an account and resetting a password are paused/i)).toBeVisible();
+  });
+
   // Dismissing the dialog is not dismissing the outage; the page has to keep saying so.
   it("keeps the notice on the page after the dialog is dismissed", async () => {
     const user = userEvent.setup();
@@ -96,5 +107,16 @@ describe("LoginPage when the site is up", () => {
       username: "grace",
       password: "hunter2password",
     });
+  });
+
+  it("still offers registering and resetting", async () => {
+    renderPage();
+    await screen.findByPlaceholderText("Username");
+
+    expect(screen.getByRole("link", { name: "Register" })).toHaveAttribute("href", "/register");
+    expect(screen.getByRole("link", { name: "Forgot password?" })).toHaveAttribute(
+      "href",
+      "/forgot-password",
+    );
   });
 });
