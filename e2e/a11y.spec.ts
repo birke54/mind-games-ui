@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { cell, claimBoard, emptyCells, register, signUp } from "./helpers";
+import { DOWN_SKIP, MAINTENANCE, cell, claimBoard, emptyCells, register, signUp } from "./helpers";
 
 /** WCAG 2.1 A and AA. Run the audit; don't eyeball it. */
 const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
@@ -31,6 +31,9 @@ test.describe("accessibility", () => {
   });
 
   test("the neutral confirmation", async ({ page }) => {
+    // Reached only by submitting, which maintenance switches off.
+    test.skip(MAINTENANCE !== null, DOWN_SKIP);
+
     // The confirmation replaces the form, so it is a screen of its own and axe never sees it
     // unless we submit. It is also the screen a user is most likely to be reading with a
     // screen reader, having just been told nothing specific happened.
@@ -61,67 +64,78 @@ test.describe("accessibility", () => {
     expect(violations).toEqual([]);
   });
 
-  test("the game hub", async ({ page }) => {
-    await register(page); // lands on /games and stays there
+  /*
+   * These screens are behind an account, and no account can be reached while the planned-downtime
+   * switch is on. The public audits above still run — and during maintenance they cover the
+   * downtime dialog and banner, which is exactly when that copy is being read.
+   */
+  test.describe("signed in", () => {
+    test.skip(() => MAINTENANCE !== null, DOWN_SKIP);
 
-    const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
-    expect(violations).toEqual([]);
-  });
+    test("the game hub", async ({ page }) => {
+      await register(page); // lands on /games and stays there
 
-  test("the sudoku mode picker", async ({ page }) => {
-    await register(page);
-    await page.getByRole("link", { name: "Sudoku" }).click();
-    await expect(page.getByRole("heading", { name: "Choose a mode" })).toBeVisible();
+      const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+      expect(violations).toEqual([]);
+    });
 
-    const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
-    expect(violations).toEqual([]);
-  });
+    test("the sudoku mode picker", async ({ page }) => {
+      await register(page);
+      await page.getByRole("link", { name: "Sudoku" }).click();
+      await expect(page.getByRole("heading", { name: "Choose a mode" })).toBeVisible();
 
-  test("the multiplayer lobby", async ({ page }) => {
-    await register(page);
-    await page.getByRole("link", { name: "Sudoku" }).click();
-    await page.getByRole("link", { name: "2-Player H2H" }).click();
-    await expect(page.getByRole("heading", { name: "Sudoku multiplayer" })).toBeVisible();
+      const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+      expect(violations).toEqual([]);
+    });
 
-    const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
-    expect(violations).toEqual([]);
-  });
+    test("the multiplayer lobby", async ({ page }) => {
+      await register(page);
+      await page.getByRole("link", { name: "Sudoku" }).click();
+      await page.getByRole("link", { name: "2-Player H2H" }).click();
+      await expect(page.getByRole("heading", { name: "Sudoku multiplayer" })).toBeVisible();
 
-  test("the home screen", async ({ page }) => {
-    await signUp(page);
+      const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+      expect(violations).toEqual([]);
+    });
 
-    const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
-    expect(violations).toEqual([]);
-  });
+    test("the home screen", async ({ page }) => {
+      await signUp(page);
 
-  test("the board", async ({ page }) => {
-    await signUp(page);
-    const board = await claimBoard(page);
+      const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+      expect(violations).toEqual([]);
+    });
 
-    // Audit it with real content in it: a selection, a note, and a conflict.
-    const [first, second] = emptyCells(board);
-    await cell(page, first).click();
-    await page.keyboard.press(board.solution[first] === "9" ? "8" : "9");
-    await cell(page, second).click();
-    await page.keyboard.press("n");
-    await page.keyboard.press("3");
+    test("the board", async ({ page }) => {
+      await signUp(page);
+      const board = await claimBoard(page);
 
-    const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
-    expect(violations).toEqual([]);
-  });
+      // Audit it with real content in it: a selection, a note, and a conflict.
+      const [first, second] = emptyCells(board);
+      await cell(page, first).click();
+      await page.keyboard.press(board.solution[first] === "9" ? "8" : "9");
+      await cell(page, second).click();
+      await page.keyboard.press("n");
+      await page.keyboard.press("3");
 
-  test("the stats page", async ({ page }) => {
-    await signUp(page);
-    await claimBoard(page);
-    await page.goto("/stats");
-    await expect(page.getByRole("heading", { name: "Stats" })).toBeVisible();
+      const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+      expect(violations).toEqual([]);
+    });
 
-    const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
-    expect(violations).toEqual([]);
+    test("the stats page", async ({ page }) => {
+      await signUp(page);
+      await claimBoard(page);
+      await page.goto("/stats");
+      await expect(page.getByRole("heading", { name: "Stats" })).toBeVisible();
+
+      const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+      expect(violations).toEqual([]);
+    });
   });
 });
 
 test.describe("keyboard-only play", () => {
+  test.skip(() => MAINTENANCE !== null, DOWN_SKIP);
+
   // The grid is one tab stop with roving focus — 81 tab stops would be unusable. A keyboard user
   // must be able to reach it and play without a mouse.
   test("the board is reachable and playable with the keyboard alone", async ({ page }) => {

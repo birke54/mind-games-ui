@@ -139,7 +139,8 @@ src/
     GamesPage.tsx  SudokuModePage.tsx  HomePage.tsx  MultiplayerPage.tsx  PlayPage.tsx
     StatsPage.tsx  LoginPage.tsx  RegisterPage.tsx
     ForgotPasswordPage.tsx  ResetPasswordPage.tsx   # public — see §7
-e2e/                 # Playwright: auth, play, offline, a11y, password-reset — against a real backend
+e2e/                 # Playwright: auth, play, offline, a11y, password-reset, maintenance
+                     #   — against a real backend; see §7 for the maintenance gate
 ```
 
 `sudoku.ts`, `gameReducer.ts` and `stats.ts` are pure — no network, no clock, no DOM — which is why

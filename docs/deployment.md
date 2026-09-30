@@ -28,6 +28,12 @@ Two consequences worth knowing before you go looking for a missing deploy:
 - `workflow_dispatch` still deploys whatever ref you dispatch, with no e2e gate. That is the escape
   hatch when the suite is broken for reasons the deploy does not depend on.
 
+A third, if you are shipping planned downtime: every account spec goes through a form that
+`src/maintenance.ts` switches off, so a maintenance build would fail e2e and never deploy — the one
+build that has to reach CloudFront promptly. Those specs therefore skip themselves while the switch
+is on, and `e2e/maintenance.spec.ts` runs in their place to assert the screens are actually down. The
+suite is green in both states, and green means something in both.
+
 ---
 
 ## 1. The bucket

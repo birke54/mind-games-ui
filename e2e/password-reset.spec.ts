@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import {
+  DOWN_SKIP,
   MAILPIT_URL,
+  MAINTENANCE,
   PASSWORD,
   clearMailbox,
   mailpitRunning,
@@ -9,6 +11,13 @@ import {
   signUp,
   waitForResetLink,
 } from "./helpers";
+
+/*
+ * Every test below goes through an account, and the account screens are switched off while the
+ * planned-downtime switch is on. Skip rather than fail: a red run here blocks the deploy that
+ * ships the maintenance page. `maintenance.spec.ts` covers the build in that state.
+ */
+test.skip(() => MAINTENANCE !== null, DOWN_SKIP);
 
 /**
  * The real flow, end to end, through a real mailbox.
