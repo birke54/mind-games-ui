@@ -1,6 +1,27 @@
 import { expect, type Page } from "@playwright/test";
+import { maintenanceNotice } from "../src/maintenance";
 
 export const PASSWORD = "hunter2password";
+
+/* --------------------------------------------------------- planned downtime */
+
+/**
+ * The switch the app itself reads, read here for the same reason: while it returns a notice, the
+ * sign-in, sign-up and reset forms ship disabled, so every spec that goes through an account is
+ * testing a form that cannot be submitted.
+ *
+ * Those specs skip themselves rather than fail, and `maintenance.spec.ts` asserts the screens are
+ * down instead — so the suite stays green and still says something true about the build in front of
+ * it. Both directions matter: `maintenance.spec.ts` skips itself once the switch is off.
+ *
+ * The alternative was a red End-to-end run for the length of the outage, which `deploy.yml` gates
+ * on — so the maintenance build would never have reached CloudFront.
+ */
+export const MAINTENANCE = maintenanceNotice();
+
+/** Reason strings, so a skipped run reads as a decision rather than a mystery. */
+export const DOWN_SKIP = "the account screens are down for maintenance (src/maintenance.ts)";
+export const UP_SKIP = "the maintenance switch is off — there is no downtime to assert";
 
 /** A fresh account per test, so tests never fight over one player's boards. */
 export function newUsername(prefix = "e2e"): string {

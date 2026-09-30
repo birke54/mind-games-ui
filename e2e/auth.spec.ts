@@ -1,5 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
-import { PASSWORD, newUsername, register, signIn, signUp } from "./helpers";
+import { DOWN_SKIP, MAINTENANCE, PASSWORD, newUsername, register, signIn, signUp } from "./helpers";
+
+/*
+ * Every test below goes through an account, and the account screens are switched off while the
+ * planned-downtime switch is on. Skip rather than fail: a red run here blocks the deploy that
+ * ships the maintenance page. `maintenance.spec.ts` covers the build in that state.
+ */
+test.skip(() => MAINTENANCE !== null, DOWN_SKIP);
 
 /**
  * Signed in means: on the home screen, with a game to start. Deliberately NOT "the username is on

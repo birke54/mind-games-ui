@@ -3,8 +3,14 @@ import { Link } from "react-router-dom";
 import * as api from "../api/client";
 import { ApiError } from "../api/client";
 import { EMAIL_MAX_LENGTH } from "../api/types";
+import { maintenanceNotice } from "../maintenance";
+import { MaintenanceBanner, MaintenanceDialog } from "../components/Maintenance";
 
 export default function ForgotPasswordPage() {
+  // The reset mail is sent by the same backend that is down, so promising a link we cannot send
+  // would be the one thing this screen must never do.
+  const maintenance = maintenanceNotice();
+
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -12,6 +18,9 @@ export default function ForgotPasswordPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    // The field and the button are already disabled during maintenance; this is the backstop for
+    // submits that go around them.
+    if (maintenance) return;
     setBusy(true);
     setError(null);
     try {
@@ -59,9 +68,17 @@ export default function ForgotPasswordPage() {
       <form onSubmit={(e) => void onSubmit(e)} className="w-full max-w-sm space-y-4">
         <h1 className="text-center text-3xl font-semibold tracking-tight">Reset your password</h1>
 
-        <p className="text-center text-sm text-slate-400">
-          Enter the email address on the account and we’ll send you a link.
-        </p>
+        {/* Not during maintenance: "we'll send you a link" is the one promise this screen cannot
+            keep while the backend that sends the mail is down. */}
+        {maintenance ? (
+          <MaintenanceBanner until={maintenance.until}>
+            Password resets are paused for maintenance.
+          </MaintenanceBanner>
+        ) : (
+          <p className="text-center text-sm text-slate-400">
+            Enter the email address on the account and we’ll send you a link.
+          </p>
+        )}
 
         <input
           className="field"
@@ -72,6 +89,7 @@ export default function ForgotPasswordPage() {
           autoComplete="email"
           maxLength={EMAIL_MAX_LENGTH}
           aria-label="Email"
+          disabled={maintenance !== null}
           required
         />
 
@@ -81,7 +99,11 @@ export default function ForgotPasswordPage() {
           </p>
         )}
 
-        <button type="submit" disabled={busy} className="btn-primary w-full">
+        <button
+          type="submit"
+          disabled={busy || maintenance !== null}
+          className="btn-primary w-full"
+        >
           {busy ? "Sending…" : "Send reset link"}
         </button>
 
@@ -92,6 +114,8 @@ export default function ForgotPasswordPage() {
           </Link>
         </p>
       </form>
+
+      {maintenance && <MaintenanceDialog until={maintenance.until} />}
     </main>
   );
 }

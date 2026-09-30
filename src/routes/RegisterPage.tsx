@@ -12,10 +12,15 @@ import {
   passwordByteLength,
 } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
+import { maintenanceNotice } from "../maintenance";
+import { MaintenanceBanner, MaintenanceDialog } from "../components/Maintenance";
 
 export default function RegisterPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  // Registering ends in a sign-in, so this screen is down for exactly as long as sign-in is.
+  const maintenance = maintenanceNotice();
 
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -31,6 +36,9 @@ export default function RegisterPage() {
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
+    // The fields and the button are already disabled during maintenance; this is the backstop for
+    // submits that go around them, such as a password manager filling and submitting the form.
+    if (maintenance) return;
     setError(null);
 
     // The same policy the reset form enforces, because it is the same policy the backend enforces
@@ -77,6 +85,12 @@ export default function RegisterPage() {
       <form onSubmit={(e) => void onSubmit(e)} className="w-full max-w-sm space-y-4">
         <h1 className="text-center text-3xl font-semibold tracking-tight">Create an account</h1>
 
+        {maintenance && (
+          <MaintenanceBanner until={maintenance.until}>
+            Sign-ups are paused for maintenance.
+          </MaintenanceBanner>
+        )}
+
         <input
           className="field"
           value={username}
@@ -84,6 +98,7 @@ export default function RegisterPage() {
           placeholder="Username"
           autoComplete="username"
           maxLength={USERNAME_MAX_LENGTH}
+          disabled={maintenance !== null}
           required
         />
         <input
@@ -94,6 +109,7 @@ export default function RegisterPage() {
           placeholder="Email"
           autoComplete="email"
           maxLength={EMAIL_MAX_LENGTH}
+          disabled={maintenance !== null}
           required
         />
         <input
@@ -104,6 +120,7 @@ export default function RegisterPage() {
           placeholder="Password"
           autoComplete="new-password"
           minLength={PASSWORD_MIN_LENGTH}
+          disabled={maintenance !== null}
           required
         />
 
@@ -117,10 +134,16 @@ export default function RegisterPage() {
           </p>
         )}
 
-        <button type="submit" disabled={busy} className="btn-primary w-full">
+        <button
+          type="submit"
+          disabled={busy || maintenance !== null}
+          className="btn-primary w-full"
+        >
           {busy ? "Creating…" : "Create account"}
         </button>
 
+        {/* The link back to /login stays: that screen is the one that explains the outage, and it
+            is where a returning player is heading anyway once we are back. */}
         <p className="text-center text-sm text-slate-400">
           Already have an account?{" "}
           <Link to="/login" className="text-sky-400 underline">
@@ -128,6 +151,8 @@ export default function RegisterPage() {
           </Link>
         </p>
       </form>
+
+      {maintenance && <MaintenanceDialog until={maintenance.until} />}
     </main>
   );
 }

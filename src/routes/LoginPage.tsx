@@ -2,6 +2,8 @@ import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { ApiError } from "../api/client";
+import { maintenanceNotice } from "../maintenance";
+import { MaintenanceBanner, MaintenanceDialog } from "../components/Maintenance";
 import GamePreviewTiles from "../components/GamePreviewTiles";
 
 export default function LoginPage() {
@@ -10,6 +12,8 @@ export default function LoginPage() {
   // `notice` is set by ResetPasswordPage, which sends the user here rather than signing them in.
   const location = useLocation() as { state?: { from?: string; notice?: string } };
   const notice = location.state?.notice;
+
+  const maintenance = maintenanceNotice();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -22,6 +26,10 @@ export default function LoginPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    // The fields and the button are already disabled during maintenance; this is the backstop for
+    // the submit paths that go around them — a password manager, or a stale tab left open when the
+    // window closed.
+    if (maintenance) return;
     setBusy(true);
     setError(null);
     try {
@@ -65,6 +73,12 @@ export default function LoginPage() {
               </p>
             )}
 
+            {maintenance && (
+              <MaintenanceBanner until={maintenance.until}>
+                Sign-in is paused for maintenance.
+              </MaintenanceBanner>
+            )}
+
             <input
               className="field"
               value={username}
@@ -72,6 +86,7 @@ export default function LoginPage() {
               placeholder="Username"
               autoComplete="username"
               maxLength={25}
+              disabled={maintenance !== null}
               required
             />
             <input
@@ -81,6 +96,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
               autoComplete="current-password"
+              disabled={maintenance !== null}
               required
             />
 
@@ -90,22 +106,36 @@ export default function LoginPage() {
               </p>
             )}
 
-            <button type="submit" disabled={busy} className="btn-primary w-full">
+            <button
+              type="submit"
+              disabled={busy || maintenance !== null}
+              className="btn-primary w-full"
+            >
               {busy ? "Signing in…" : "Sign in"}
             </button>
 
-            <p className="text-center text-sm text-slate-400">
-              <Link to="/forgot-password" className="text-sky-400 underline">
-                Forgot password?
-              </Link>
-            </p>
+            {/* Both destinations are down too, so during maintenance they are not offered at all:
+                a link to a screen that can only refuse you is worse than saying so here. */}
+            {maintenance ? (
+              <p className="text-center text-sm text-slate-400">
+                Creating an account and resetting a password are paused as well.
+              </p>
+            ) : (
+              <>
+                <p className="text-center text-sm text-slate-400">
+                  <Link to="/forgot-password" className="text-sky-400 underline">
+                    Forgot password?
+                  </Link>
+                </p>
 
-            <p className="text-center text-sm text-slate-400">
-              No account?{" "}
-              <Link to="/register" className="text-sky-400 underline">
-                Register
-              </Link>
-            </p>
+                <p className="text-center text-sm text-slate-400">
+                  No account?{" "}
+                  <Link to="/register" className="text-sky-400 underline">
+                    Register
+                  </Link>
+                </p>
+              </>
+            )}
           </form>
 
           {/* After the form in the DOM so the sign-in fields stay above the fold on phones and
@@ -114,7 +144,11 @@ export default function LoginPage() {
             <h2 className="text-lg font-semibold text-slate-100">
               Recruiter or prospective employer?
             </h2>
-            <p>Sign in with the guest account to look around — no sign-up needed.</p>
+            <p>
+              {maintenance
+                ? "The guest account is yours to use as soon as maintenance is over — no sign-up needed."
+                : "Sign in with the guest account to look around — no sign-up needed."}
+            </p>
             <p>
               Username: <span className="font-mono text-slate-100">recruiterguest</span>
               <br />
@@ -125,6 +159,8 @@ export default function LoginPage() {
 
         <GamePreviewTiles />
       </div>
+
+      {maintenance && <MaintenanceDialog until={maintenance.until} />}
     </main>
   );
 }
